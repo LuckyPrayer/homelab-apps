@@ -1,0 +1,42 @@
+version: "3.9"
+
+# Mealie - Recipe Manager
+# A self-hosted recipe manager and meal planner
+# 
+# Deployed via Komodo Git integration
+# Secrets: None required
+# Docs: https://docs.mealie.io/
+
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:v1.4.0
+    container_name: mealie
+    user: "3002:3002"  # Run as docker-svc user
+    environment:
+      - ALLOW_SIGNUP=false
+      - PUID=3002
+      - PGID=3002
+      - TZ=${TZ:-America/Toronto}
+      - DB_ENGINE=sqlite
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "9000:9000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mealie.rule=Host(`mealie.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)"
+      - "traefik.http.routers.mealie.entrypoints=websecure"
+      - "traefik.http.routers.mealie.tls.certresolver=mytls"
+      - "traefik.http.services.mealie.loadbalancer.server.port=9000"
+    restart: unless-stopped
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    name: homelab
+    external: true

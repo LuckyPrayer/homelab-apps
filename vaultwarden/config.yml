@@ -1,0 +1,68 @@
+# Vaultwarden - App Configuration
+# Used by deployment scripts and Ansible for metadata
+
+name: vaultwarden
+description: Bitwarden-compatible password manager
+version: "1.32.7"
+image: vaultwarden/server:1.32.7-alpine
+
+# Domain configuration
+domain:
+  prefix: vaultwarden         # Results in vaultwarden.{env}.{base_domain}
+  port: 8080                  # Internal container port
+  additional_ports:
+    - name: websocket
+      port: 3012
+      description: WebSocket for live sync
+
+# Secrets configuration
+secrets:
+  infisical_path: /services/vaultwarden
+  required:
+    - VAULTWARDEN_ADMIN_TOKEN  # Admin panel access
+  optional:
+    - VAULTWARDEN_SMTP_USERNAME
+    - VAULTWARDEN_SMTP_PASSWORD
+    - SMTP_HOST
+    - SMTP_FROM
+    - SMTP_PORT
+
+# Backup configuration  
+backup:
+  enabled: true
+  paths:
+    - ./data                  # SQLite database and attachments
+  exclude: []
+  # Vaultwarden-specific: stop container during backup for data consistency
+  stop_during_backup: true
+
+# Restore configuration
+restore:
+  enabled: true
+  priority: 10                # HIGH priority - restore passwords first!
+  pre_restore: null
+  post_restore: |
+    # Verify database integrity after restore
+    sqlite3 ./data/db.sqlite3 "PRAGMA integrity_check;"
+
+# Dependencies
+dependencies:
+  - traefik
+
+# Resource limits
+resources:
+  memory_limit: 256M
+  cpu_limit: "0.25"
+
+# Health check
+healthcheck:
+  endpoint: /alive
+  interval: 30s
+  timeout: 10s
+
+# Tags
+tags:
+  - security
+  - passwords
+  - critical
+  - productivity

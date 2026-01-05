@@ -1,0 +1,53 @@
+# Mealie - App Configuration
+# Used by deployment scripts and Ansible for metadata
+
+name: mealie
+description: Self-hosted recipe manager and meal planner
+version: v1.4.0
+image: ghcr.io/mealie-recipes/mealie:v1.4.0
+
+# Domain configuration
+domain:
+  prefix: mealie              # Results in mealie.{env}.{base_domain}
+  port: 9000                  # Internal container port
+
+# Secrets configuration
+secrets:
+  infisical_path: null        # No secrets required
+  required: []
+  optional: []
+
+# Backup configuration  
+backup:
+  enabled: true
+  paths:
+    - ./data                  # Relative to compose file location
+  exclude: []
+
+# Restore configuration
+restore:
+  enabled: true
+  priority: 50                # Lower = restore first (1-100)
+  pre_restore: null           # Script to run before restore
+  post_restore: null          # Script to run after restore
+
+# Dependencies (must be running before this app)
+dependencies:
+  - traefik
+
+# Resource limits (optional)
+resources:
+  memory_limit: 512M
+  cpu_limit: "0.5"
+
+# Health check
+healthcheck:
+  endpoint: /api/app/about
+  interval: 30s
+  timeout: 10s
+
+# Tags for filtering
+tags:
+  - recipes
+  - productivity
+  - web-app

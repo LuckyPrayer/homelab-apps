@@ -1,0 +1,148 @@
+# Homelab Apps Manifest
+# Defines which applications deploy to which hosts
+#
+# Usage:
+#   - Ansible reads this to determine deployments
+#   - Profiles group related apps together
+#   - Per-host overrides allow customization
+
+# =============================================================================
+# PROFILES - Reusable app groupings
+# =============================================================================
+profiles:
+  core:
+    description: Essential infrastructure services
+    apps:
+      - traefik
+      - homepage
+  
+  productivity:
+    description: Productivity and personal tools
+    apps:
+      - vaultwarden
+      - n8n
+  
+  recipes:
+    description: Meal planning and recipes
+    apps:
+      - mealie
+  
+  gaming:
+    description: Game servers
+    apps:
+      - minecraft
+  
+  media:
+    description: Media servers and management
+    apps:
+      - jellyfin
+      - audiobookshelf
+  
+  monitoring:
+    description: Monitoring and observability
+    apps:
+      - grafana
+      - prometheus
+      - node-exporter
+
+# =============================================================================
+# HOSTS - Per-host application assignments
+# =============================================================================
+hosts:
+  # ---------------------------------------------------------------------------
+  # Development Environment
+  # ---------------------------------------------------------------------------
+  orion-dev:
+    env: dev
+    profiles:
+      - core
+      - productivity
+      - recipes
+      - gaming
+    apps: []           # Additional apps beyond profiles
+    exclude: []        # Apps to exclude from profiles
+    restore:
+      enabled: true
+      priority_order:  # Restore order (first = highest priority)
+        - vaultwarden  # Critical - restore passwords first
+        - n8n          # Workflows depend on other services
+        - mealie
+        - minecraft
+  
+  hephaestus-dev:
+    env: dev
+    profiles:
+      - core
+    apps:
+      - harbor         # Container registry
+      - docs-server
+    exclude: []
+    restore:
+      enabled: true
+      priority_order:
+        - harbor
+  
+  argus-dev:
+    env: dev
+    profiles:
+      - monitoring
+    apps:
+      - komodo-core
+    exclude: []
+    restore:
+      enabled: false   # Monitoring data is ephemeral
+
+  # ---------------------------------------------------------------------------
+  # Production Environment
+  # ---------------------------------------------------------------------------
+  orion-prod:
+    env: prod
+    profiles:
+      - core
+      - productivity
+      - recipes
+    apps: []
+    exclude:
+      - minecraft      # No gaming in prod
+    restore:
+      enabled: true
+      priority_order:
+        - vaultwarden
+        - n8n
+        - mealie
+  
+  hephaestus-prod:
+    env: prod
+    profiles:
+      - core
+      - media
+    apps:
+      - harbor
+    exclude: []
+    restore:
+      enabled: true
+      priority_order:
+        - harbor
+        - jellyfin
+        - audiobookshelf
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+settings:
+  # Default environment variables for all apps
+  defaults:
+    TZ: America/Toronto
+    BASE_DOMAIN: thebozic.com
+  
+  # Git repository settings
+  repo:
+    url: git@github.com:LuckyPrayer/homelab-apps.git
+    branch: main
+    deploy_path: /opt/homelab-apps
+  
+  # Backup integration
+  backup:
+    backend: restic
+    repository: b2:homelab-backup
+    schedule: "0 3 * * *"  # 3 AM daily

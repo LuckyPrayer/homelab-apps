@@ -25,14 +25,6 @@ services:
       # Admin token (from Infisical: /services/vaultwarden/VAULTWARDEN_ADMIN_TOKEN)
       - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN}
       
-      # SMTP configuration (optional - from Infisical)
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_FROM=${SMTP_FROM:-}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_SECURITY=${SMTP_SECURITY:-starttls}
-      - SMTP_USERNAME=${VAULTWARDEN_SMTP_USERNAME:-}
-      - SMTP_PASSWORD=${VAULTWARDEN_SMTP_PASSWORD:-}
-      
       # Server settings
       - WEBSOCKET_ENABLED=true
       - ROCKET_PORT=8080
@@ -49,12 +41,12 @@ services:
     labels:
       - "traefik.enable=true"
       # Main web interface
-      - "traefik.http.routers.vaultwarden.rule=Host(`vaultwarden.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)"
+      - "traefik.http.routers.vaultwarden.rule=Host(\`vaultwarden.\${ENV:-dev}.\${BASE_DOMAIN:-thebozic.com}\`)"
       - "traefik.http.routers.vaultwarden.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden.tls.certresolver=mytls"
       - "traefik.http.services.vaultwarden.loadbalancer.server.port=8080"
       # WebSocket support for live sync
-      - "traefik.http.routers.vaultwarden-ws.rule=Host(`vaultwarden.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`) && Path(`/notifications/hub`)"
+      - "traefik.http.routers.vaultwarden-ws.rule=Host(\`vaultwarden.\${ENV:-dev}.\${BASE_DOMAIN:-thebozic.com}\`) && Path(\`/notifications/hub\`)"
       - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-ws.tls.certresolver=mytls"
       - "traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012"

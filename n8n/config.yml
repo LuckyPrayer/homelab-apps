@@ -1,18 +1,16 @@
 # n8n - Workflow Automation
 # A powerful workflow automation tool
 #
-# Secrets required:
-#   - DISCORD_WEBHOOK_URL: Optional webhook for notifications
-#
+# Secrets: None required (DISCORD_WEBHOOK_URL is optional)
 # Data stored in ./data directory
 
 name: n8n
 description: Workflow automation platform
 image: docker.n8n.io/n8nio/n8n:1.122.2
 
-# Secrets from Infisical (optional)
+# No secrets required
 secrets:
-  infisical_path: /services/n8n
+  infisical_path: null
 
 # Backup configuration
 backup:

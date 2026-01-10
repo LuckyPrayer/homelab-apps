@@ -1,0 +1,26 @@
+# Homepage - Dashboard
+# A highly customizable application dashboard
+#
+# Config files:
+#   - config/services.yaml: Service definitions
+#   - config/bookmarks.yaml: Bookmark links
+#   - config/settings.yaml: Dashboard settings
+#   - config/widgets.yaml: Widget configuration
+
+name: homepage
+description: Modern dashboard for homelab services
+image: ghcr.io/gethomepage/homepage:latest
+
+# No secrets required (optional integrations only)
+secrets:
+  infisical_path: null
+
+# Environment defaults
+environment:
+  HOMEPAGE_ALLOWED_HOSTS: "*"
+
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - config

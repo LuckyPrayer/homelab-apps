@@ -1,0 +1,39 @@
+version: "3.9"
+
+# Homepage - Modern Dashboard for Homelab
+# A highly customizable application dashboard
+#
+# Deployed via homelab-apps manifest
+# Secrets: None required
+# Docs: https://gethomepage.dev/
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-America/Toronto}
+      - HOMEPAGE_ALLOWED_HOSTS=home.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com},localhost:3001
+    volumes:
+      - ./config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "3001:3000"
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - traefik.http.routers.homepage.rule=Host(`home.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)
+      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.tls.certresolver=mytls"
+      - "traefik.http.services.homepage.loadbalancer.server.port=3000"
+    restart: unless-stopped
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    name: homelab
+    external: true

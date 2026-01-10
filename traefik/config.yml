@@ -1,0 +1,27 @@
+# Traefik - Reverse Proxy
+# Provides HTTPS termination and routing for all services
+#
+# Secrets required:
+#   - CF_DNS_API_TOKEN: Cloudflare DNS API token for ACME challenges
+#
+# Config files needed:
+#   - config/acme.json: Let's Encrypt certificate storage (auto-created)
+#   - config/dynamic.yml: Dynamic routing configuration
+
+name: traefik
+description: Reverse proxy with automatic HTTPS via Cloudflare DNS
+image: traefik:2.11
+
+# Secrets from Infisical
+secrets:
+  infisical_path: /infrastructure/dns/cloudflare
+
+# Environment defaults
+environment:
+  TRAEFIK_EMAIL: admin@thebozic.com
+
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - config/acme.json

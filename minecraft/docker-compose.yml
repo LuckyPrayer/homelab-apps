@@ -1,0 +1,83 @@
+version: "3.9"
+
+# Minecraft Server - Lucky's Lab
+# A Minecraft game server with BlueMap, Discord, and Geyser support
+#
+# Deployed via homelab-apps manifest
+# Secrets: MINECRAFT_LL_RCON_PASSWORD, MINECRAFT_LL_DISCORD_BOT_TOKEN
+# Infisical path: /services/minecraft/LL
+# Docs: https://docker-minecraft-server.readthedocs.io/
+
+services:
+  minecraft:
+    image: ${MC_IMAGE:-registry.dev.thebozic.com/mc-server/minecraft-server:dev-latest}
+    container_name: minecraft
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Essential Minecraft Server Settings
+      - EULA=TRUE
+      - TYPE=${MC_TYPE:-SPIGOT}
+      - VERSION=${MC_VERSION:-1.21.10}
+      - MEMORY=${MC_MEMORY:-2G}
+      - MAX_MEMORY=${MC_MAX_MEMORY:-4G}
+      
+      # Core Server Configuration
+      - DIFFICULTY=${MC_DIFFICULTY:-peaceful}
+      - GAMEMODE=${MC_GAMEMODE:-creative}
+      - MOTD=${MC_MOTD:-[DEV] Lucky's Lab}
+      - VIEW_DISTANCE=${MC_VIEW_DISTANCE:-10}
+      - SIMULATION_DISTANCE=${MC_SIMULATION_DISTANCE:-8}
+      - MAX_PLAYERS=${MC_MAX_PLAYERS:-10}
+      - ONLINE_MODE=${MC_ONLINE_MODE:-true}
+      - PVP=${MC_PVP:-true}
+      - ALLOW_NETHER=${MC_ALLOW_NETHER:-true}
+      - ENABLE_COMMAND_BLOCK=${MC_ENABLE_COMMAND_BLOCK:-true}
+      
+      # Whitelist Configuration
+      - WHITELIST_ENABLED=${MC_WHITELIST_ENABLED:-false}
+      - ENFORCE_WHITELIST=${MC_WHITELIST_ENABLED:-false}
+      
+      # RCON Configuration
+      - ENABLE_RCON=true
+      - RCON_PASSWORD=${MINECRAFT_LL_RCON_PASSWORD}
+      - RCON_PORT=25575
+      
+      # Timezone
+      - TZ=${TZ:-America/Toronto}
+      
+      # BlueMap Configuration
+      - BLUEMAP_ACCEPT_DOWNLOAD=true
+      - BLUEMAP_PORT=8100
+      - BLUEMAP_WEBSERVER_ENABLED=true
+      
+      # Discord Integration
+      - DISCORD_BOT_TOKEN=${MINECRAFT_LL_DISCORD_BOT_TOKEN:-}
+      - DISCORD_GUILD_ID=${MC_DISCORD_GUILD_ID:-1353510916372692992}
+      - DISCORD_CHAT_CHANNEL_ID=${MC_DISCORD_CHAT_CHANNEL_ID:-1444872779307683982}
+      - DISCORD_CONSOLE_CHANNEL_ID=${MC_DISCORD_CONSOLE_CHANNEL_ID:-1444872739260207205}
+      
+      # Geyser/Bedrock Configuration
+      - GEYSER_PORT=19132
+      - GEYSER_AUTH_TYPE=floodgate
+    ports:
+      - "25565:25565/tcp"
+      - "25565:25565/udp"
+      - "8100:8100"
+      - "19132:19132/udp"
+    volumes:
+      - ./data:/data
+    labels:
+      - "traefik.enable=true"
+      - traefik.http.routers.bluemap.rule=Host(`bluemap.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)
+      - "traefik.http.routers.bluemap.entrypoints=websecure"
+      - "traefik.http.routers.bluemap.tls.certresolver=mytls"
+      - "traefik.http.services.bluemap.loadbalancer.server.port=8100"
+    restart: unless-stopped
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    name: homelab
+    external: true

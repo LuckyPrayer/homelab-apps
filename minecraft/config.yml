@@ -1,0 +1,22 @@
+# Minecraft Server - Lucky's Lab
+# A Minecraft game server with BlueMap, Discord, and Geyser support
+#
+# Secrets required (from Infisical /services/minecraft/LL/):
+#   - MINECRAFT_LL_RCON_PASSWORD: RCON access password
+#   - MINECRAFT_LL_DISCORD_BOT_TOKEN: Discord bot token
+#
+# Data stored in ./data directory
+
+name: minecraft
+description: Minecraft game server with plugins
+image: registry.dev.thebozic.com/mc-server/minecraft-server:dev-latest
+
+# Secrets from Infisical
+secrets:
+  infisical_path: /services/minecraft/LL
+
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - data

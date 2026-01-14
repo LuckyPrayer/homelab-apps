@@ -1,0 +1,59 @@
+# Stardew Valley Server - App Configuration
+# Multiplayer Stardew Valley game server
+
+name: stardew-server
+description: Stardew Valley multiplayer server with VNC access
+version: "1.0.0"
+image: noenv/stardew-multiplayer-docker:latest
+
+# Custom install path (not in /opt/stacks)
+paths:
+  compose_dir: "."
+  data_dir: "./data"
+  install_path: "/opt/stardew-server"
+
+# Domain configuration
+domain:
+  prefix: stardew
+  port: 8091
+
+# Port mappings
+ports:
+  game: "24642:24642/udp"
+  vnc: "8091:8091"
+
+# Secrets from Infisical
+secrets:
+  infisical_path: /services/stardew-server
+  required:
+    - STARDEW_STEAM_USER
+    - STARDEW_STEAM_PASS
+    - STARDEW_VNC_PASSWORD
+
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - ./data
+    - ./Saves
+    - ./Mods
+  stop_during_backup: true
+  exclude:
+    - "*.log"
+    - "*.tmp"
+    - "cache/*"
+
+# Restore configuration
+restore:
+  enabled: true
+  priority: 80
+
+# Not critical infrastructure
+hot_backup: false
+
+dependencies:
+  - traefik
+
+tags:
+  - gaming
+  - stardew

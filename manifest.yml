@@ -31,6 +31,7 @@ profiles:
     description: Game servers
     apps:
       - minecraft
+      - stardew-server
   
   media:
     description: Media servers and management
@@ -68,6 +69,7 @@ hosts:
         - n8n          # Workflows depend on other services
         - mealie
         - minecraft
+        - stardew-server
   
   hephaestus-dev:
     env: dev

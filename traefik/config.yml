@@ -25,3 +25,25 @@ backup:
   enabled: true
   paths:
     - config/acme.json
+  stop_during_backup: false  # NEVER stop traefik
+  exclude:
+    - "*.log"
+
+# Restore configuration
+restore:
+  enabled: true
+  priority: 1                 # Restore FIRST - all apps depend on it
+  pre_restore: null
+  post_restore: |
+    # acme.json must have strict permissions
+    chmod 600 config/acme.json 2>/dev/null || true
+
+# CRITICAL: Never stop this service during backup
+hot_backup: true
+
+dependencies: []
+
+tags:
+  - infrastructure
+  - critical
+  - networking

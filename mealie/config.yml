@@ -23,6 +23,9 @@ backup:
   paths:
     - ./data                  # Relative to compose file location
   exclude: []
+  stop_during_backup: true
+  pre_backup: null
+  post_backup: null
 
 # Restore configuration
 restore:
@@ -30,6 +33,9 @@ restore:
   priority: 50                # Lower = restore first (1-100)
   pre_restore: null           # Script to run before restore
   post_restore: null          # Script to run after restore
+
+# Not critical infrastructure - can be stopped during backup
+hot_backup: false
 
 # Dependencies (must be running before this app)
 dependencies:

@@ -66,3 +66,6 @@ tags:
   - passwords
   - critical
   - productivity
+
+# Not critical infrastructure - can be stopped during backup
+hot_backup: false

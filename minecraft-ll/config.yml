@@ -7,8 +7,8 @@
 #
 # Data stored in ./data directory
 
-name: minecraft
-description: Minecraft game server with plugins
+name: minecraft-ll
+description: Minecraft LL game server with plugins
 image: registry.dev.thebozic.com/mc-server/minecraft-server:dev-latest
 
 # Secrets from Infisical
@@ -32,12 +32,12 @@ backup:
     - "cache/*"
   pre_backup: |
     # Save all and disable autosave before backup
-    docker exec minecraft rcon-cli save-all 2>/dev/null || true
-    docker exec minecraft rcon-cli save-off 2>/dev/null || true
+    docker exec minecraft-ll rcon-cli save-all 2>/dev/null || true
+    docker exec minecraft-ll rcon-cli save-off 2>/dev/null || true
     sleep 3
   post_backup: |
     # Re-enable autosave after backup
-    docker exec minecraft rcon-cli save-on 2>/dev/null || true
+    docker exec minecraft-ll rcon-cli save-on 2>/dev/null || true
 
 # Restore configuration
 restore:

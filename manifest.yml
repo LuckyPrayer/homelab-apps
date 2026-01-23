@@ -30,7 +30,7 @@ profiles:
   gaming:
     description: Game servers
     apps:
-      - minecraft
+      - minecraft-ll
       - stardew-server
   
   media:
@@ -68,7 +68,7 @@ hosts:
         - vaultwarden  # Critical - restore passwords first
         - n8n          # Workflows depend on other services
         - mealie
-        - minecraft
+        - minecraft-ll
         - stardew-server
   
   hephaestus-dev:

@@ -9,9 +9,9 @@ version: "3.9"
 # Docs: https://docker-minecraft-server.readthedocs.io/
 
 services:
-  minecraft:
+  minecraft-ll:
     image: ${MC_IMAGE:-registry.dev.thebozic.com/mc-server/minecraft-server:dev-latest}
-    container_name: minecraft
+    container_name: minecraft-ll
     security_opt:
       - no-new-privileges:true
     environment:
@@ -69,10 +69,10 @@ services:
       - ./data:/data
     labels:
       - "traefik.enable=true"
-      - traefik.http.routers.bluemap.rule=Host(`bluemap.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)
-      - "traefik.http.routers.bluemap.entrypoints=websecure"
-      - "traefik.http.routers.bluemap.tls.certresolver=mytls"
-      - "traefik.http.services.bluemap.loadbalancer.server.port=8100"
+      - traefik.http.routers.bluemap-ll.rule=Host(`bluemap.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)
+      - "traefik.http.routers.bluemap-ll.entrypoints=websecure"
+      - "traefik.http.routers.bluemap-ll.tls.certresolver=mytls"
+      - "traefik.http.services.bluemap-ll.loadbalancer.server.port=8100"
     restart: unless-stopped
     networks:
       - homelab

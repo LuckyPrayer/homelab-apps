@@ -10,15 +10,15 @@ version: "3.9"
 
 services:
   minecraft-ll:
-    image: ${MC_IMAGE:-registry.dev.thebozic.com/mc-server/minecraft-server:dev-latest}
+    image: ${MC_IMAGE:-harbor.dev.thebozic.com/mc-server/minecraft-server:dev-latest}
     container_name: minecraft-ll
     security_opt:
       - no-new-privileges:true
     environment:
       # Essential Minecraft Server Settings
       - EULA=TRUE
-      - TYPE=${MC_TYPE:-SPIGOT}
-      - VERSION=${MC_VERSION:-1.21.10}
+      - TYPE=${MC_TYPE:-PAPER}
+      - VERSION=${MC_VERSION:-1.21.4}
       - MEMORY=${MC_MEMORY:-2G}
       - MAX_MEMORY=${MC_MAX_MEMORY:-4G}
       

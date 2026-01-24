@@ -9,7 +9,7 @@
 
 name: minecraft-ll
 description: Minecraft LL game server with plugins
-image: registry.dev.thebozic.com/mc-server/minecraft-server:dev-latest
+image: harbor.dev.thebozic.com/mc-server/minecraft-server:dev-latest
 
 # Secrets from Infisical
 secrets:

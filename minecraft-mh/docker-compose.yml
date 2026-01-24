@@ -1,0 +1,83 @@
+# Minecraft Server - Mental Hospital SMP
+# A Minecraft game server with BlueMap, Discord, and Geyser support
+#
+# Deployed via homelab-apps manifest
+# Secrets: MINECRAFT_MH_RCON_PASSWORD, MINECRAFT_MH_DISCORD_BOT_TOKEN
+# Infisical path: /services/minecraft/MH
+# Docs: https://docker-minecraft-server.readthedocs.io/
+
+services:
+  minecraft-mh:
+    image: ${MC_IMAGE:-harbor.prod.thebozic.com/mc-server/minecraft-server:prod-latest}
+    container_name: minecraft-mh
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Essential Minecraft Server Settings
+      - EULA=TRUE
+      - TYPE=${MC_TYPE:-PAPER}
+      - VERSION=${MC_VERSION:-1.21.4}
+      - MEMORY=${MC_MEMORY:-4G}
+      - MAX_MEMORY=${MC_MAX_MEMORY:-8G}
+      
+      # Core Server Configuration
+      - DIFFICULTY=${MC_DIFFICULTY:-hard}
+      - GAMEMODE=${MC_GAMEMODE:-survival}
+      - MOTD=${MC_MOTD:-§6Mental Hospital's §fMinecraft SMP Server!}
+      - SERVER_NAME=${MC_SERVER_NAME:-Mental Hospital SMP}
+      - VIEW_DISTANCE=${MC_VIEW_DISTANCE:-16}
+      - SIMULATION_DISTANCE=${MC_SIMULATION_DISTANCE:-10}
+      - MAX_PLAYERS=${MC_MAX_PLAYERS:-20}
+      - ONLINE_MODE=${MC_ONLINE_MODE:-true}
+      - PVP=${MC_PVP:-true}
+      - ALLOW_NETHER=${MC_ALLOW_NETHER:-true}
+      - ENABLE_COMMAND_BLOCK=${MC_ENABLE_COMMAND_BLOCK:-true}
+      
+      # Whitelist Configuration
+      - WHITELIST_ENABLED=${MC_WHITELIST_ENABLED:-true}
+      - ENFORCE_WHITELIST=${MC_WHITELIST_ENABLED:-true}
+      - OVERRIDE_WHITELIST=${MC_WHITELIST:-luckyprayer,charms}
+      
+      # RCON Configuration
+      - ENABLE_RCON=true
+      - RCON_PASSWORD=${MINECRAFT_MH_RCON_PASSWORD}
+      - RCON_PORT=25575
+      
+      # Timezone
+      - TZ=${TZ:-America/Toronto}
+      
+      # BlueMap Configuration
+      - BLUEMAP_ACCEPT_DOWNLOAD=true
+      - BLUEMAP_PORT=8100
+      - BLUEMAP_WEBSERVER_ENABLED=true
+      
+      # Discord Integration
+      - DISCORD_BOT_TOKEN=${MINECRAFT_MH_DISCORD_BOT_TOKEN:-}
+      - DISCORD_GUILD_ID=${MC_DISCORD_GUILD_ID:-1353510916372692992}
+      - DISCORD_CHAT_CHANNEL_ID=${MC_DISCORD_CHAT_CHANNEL_ID:-}
+      - DISCORD_CONSOLE_CHANNEL_ID=${MC_DISCORD_CONSOLE_CHANNEL_ID:-}
+      
+      # Geyser/Bedrock Configuration
+      - GEYSER_PORT=19132
+      - GEYSER_AUTH_TYPE=floodgate
+    ports:
+      - "25565:25565/tcp"
+      - "25565:25565/udp"
+      - "8100:8100"
+      - "19132:19132/udp"
+    volumes:
+      - ./data:/data
+    labels:
+      - "traefik.enable=true"
+      - traefik.http.routers.bluemap-mh.rule=Host(`bluemap.${ENV:-prod}.${BASE_DOMAIN:-thebozic.com}`)
+      - "traefik.http.routers.bluemap-mh.entrypoints=websecure"
+      - "traefik.http.routers.bluemap-mh.tls.certresolver=mytls"
+      - "traefik.http.services.bluemap-mh.loadbalancer.server.port=8100"
+    restart: unless-stopped
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    name: homelab
+    external: true

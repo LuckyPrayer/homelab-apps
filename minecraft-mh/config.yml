@@ -1,0 +1,64 @@
+# Minecraft Server - Mental Hospital SMP
+# A Minecraft game server with BlueMap, Discord, and Geyser support
+#
+# Secrets required (from Infisical /services/minecraft/MH/):
+#   - MINECRAFT_MH_RCON_PASSWORD: RCON access password
+#   - MINECRAFT_MH_DISCORD_BOT_TOKEN: Discord bot token
+#
+# Data stored in ./data directory
+
+name: minecraft-mh
+description: Mental Hospital SMP - Production Minecraft server
+image: harbor.prod.thebozic.com/mc-server/minecraft-server:prod-latest
+
+# Secrets from Infisical
+secrets:
+  infisical_path: /services/minecraft/MH
+
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - data
+    - data/world
+    - data/world_nether
+    - data/world_the_end
+    - data/plugins
+    - data/config
+  stop_during_backup: true   # Stop for world save consistency
+  exclude:
+    - "*.log"
+    - "logs/*"
+    - "cache/*"
+  pre_backup: |
+    # Save all and disable autosave before backup
+    docker exec minecraft-mh rcon-cli save-all 2>/dev/null || true
+    docker exec minecraft-mh rcon-cli save-off 2>/dev/null || true
+    sleep 3
+  post_backup: |
+    # Re-enable autosave after backup
+    docker exec minecraft-mh rcon-cli save-on 2>/dev/null || true
+
+# Restore configuration
+restore:
+  enabled: true
+  priority: 70                # Gaming - lower priority
+  pre_restore: null
+  post_restore: |
+    chown -R 1000:1000 ./data 2>/dev/null || true
+
+# Not critical infrastructure
+hot_backup: false
+
+dependencies:
+  - traefik
+
+# Network ports
+ports:
+  minecraft: "25565:25565"
+  bluemap: "8100:8100"
+  geyser: "19132:19132/udp"
+
+tags:
+  - gaming
+  - entertainment

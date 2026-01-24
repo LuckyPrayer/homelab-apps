@@ -30,7 +30,6 @@ profiles:
   gaming:
     description: Game servers
     apps:
-      - minecraft-ll
       - stardew-server
   
   media:
@@ -60,7 +59,8 @@ hosts:
       - productivity
       - recipes
       - gaming
-    apps: []           # Additional apps beyond profiles
+    apps:
+      - minecraft-ll   # Dev-only Minecraft server
     exclude: []        # Apps to exclude from profiles
     restore:
       enabled: true
@@ -103,15 +103,16 @@ hosts:
       - core
       - productivity
       - recipes
-    apps: []
-    exclude:
-      - minecraft      # No gaming in prod
+    apps:
+      - minecraft-mh   # Prod-only Minecraft server (Mental Hospital SMP)
+    exclude: []
     restore:
       enabled: true
       priority_order:
         - vaultwarden
         - n8n
         - mealie
+        - minecraft-mh
   
   hephaestus-prod:
     env: prod

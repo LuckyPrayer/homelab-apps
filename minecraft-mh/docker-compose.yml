@@ -56,6 +56,9 @@ services:
       - DISCORD_GUILD_ID=${MC_DISCORD_GUILD_ID:-1353510916372692992}
       - DISCORD_CHAT_CHANNEL_ID=${MC_DISCORD_CHAT_CHANNEL_ID:-}
       - DISCORD_CONSOLE_CHANNEL_ID=${MC_DISCORD_CONSOLE_CHANNEL_ID:-}
+      # Disable server start/stop Discord notifications
+      - DISCORD_SERVER_STARTUP_MESSAGE=
+      - DISCORD_SERVER_SHUTDOWN_MESSAGE=
       
       # Geyser/Bedrock Configuration
       - GEYSER_PORT=19132

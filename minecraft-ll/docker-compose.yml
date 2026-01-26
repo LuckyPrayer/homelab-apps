@@ -18,7 +18,7 @@ services:
       # Essential Minecraft Server Settings
       - EULA=TRUE
       - TYPE=${MC_TYPE:-SPIGOT}
-      - VERSION=${MC_VERSION:-1.21.10}
+      - VERSION=${MC_VERSION:-1.21.11}
       # Fix for YAML parsing - quotes needed for brackets
       - SERVER_NAME="[DEV] Lucky's Lab Server"
       - MEMORY=${MC_MEMORY:-2G}

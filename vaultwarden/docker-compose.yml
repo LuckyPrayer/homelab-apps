@@ -44,11 +44,13 @@ services:
       - traefik.http.routers.vaultwarden.rule=Host(`vaultwarden.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)
       - "traefik.http.routers.vaultwarden.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden.tls.certresolver=mytls"
+      - "traefik.http.routers.vaultwarden.service=vaultwarden"
       - "traefik.http.services.vaultwarden.loadbalancer.server.port=8080"
       # WebSocket support for live sync
       - traefik.http.routers.vaultwarden-ws.rule=Host(`vaultwarden.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`) && Path(`/notifications/hub`)
       - "traefik.http.routers.vaultwarden-ws.entrypoints=websecure"
       - "traefik.http.routers.vaultwarden-ws.tls.certresolver=mytls"
+      - "traefik.http.routers.vaultwarden-ws.service=vaultwarden-ws"
       - "traefik.http.services.vaultwarden-ws.loadbalancer.server.port=3012"
     restart: unless-stopped
     networks:

@@ -64,6 +64,7 @@ hosts:
       - productivity
       - recipes
       - gaming
+      - social         # Discord/Twitch bot integrations
     apps:
       - minecraft-ll   # Dev-only Minecraft server
     exclude: []        # Apps to exclude from profiles
@@ -80,7 +81,6 @@ hosts:
     env: dev
     profiles:
       - core
-      - social         # Discord/Twitch bot integrations
     apps:
       - harbor         # Container registry
       - docs-server

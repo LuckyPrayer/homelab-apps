@@ -10,7 +10,7 @@ version: "3.9"
 
 services:
   timbot:
-    image: harbor.dev.thebozic.com/timbot/timbot:1.0.1
+    image: harbor.dev.thebozic.com/timbot/timbot:latest
     container_name: timbot
     user: "3002:3002"  # Run as docker-svc user
     environment:

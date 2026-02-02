@@ -41,9 +41,12 @@ services:
       - LIVE_CHECK_INTERVAL=${LIVE_CHECK_INTERVAL:-60}
       - VOICE_CHECK_INTERVAL=${VOICE_CHECK_INTERVAL:-10}
       
-      # Voice channel settings
+      # Voice channel settings (legacy single category)
       - VOICE_CHANNEL_PREFIX=${VOICE_CHANNEL_PREFIX:-🎮 Gaming}
       - MAX_VOICE_CHANNELS=${MAX_VOICE_CHANNELS:-10}
+      # Multiple voice categories (JSON format, overrides legacy if set)
+      # Example: '[{"category_id": "123", "prefix": "🎮 Gaming"}, {"category_id": "456", "prefix": "🎵 Music"}]'
+      - VOICE_CATEGORIES=${VOICE_CATEGORIES:-}
       
       # Feature toggles
       - CLIPS_ENABLED=${CLIPS_ENABLED:-true}

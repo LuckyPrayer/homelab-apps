@@ -32,6 +32,11 @@ profiles:
     apps:
       - stardew-server
   
+  social:
+    description: Discord bots and social integrations
+    apps:
+      - timbot
+  
   media:
     description: Media servers and management
     apps:
@@ -75,6 +80,7 @@ hosts:
     env: dev
     profiles:
       - core
+      - social         # Discord/Twitch bot integrations
     apps:
       - harbor         # Container registry
       - docs-server

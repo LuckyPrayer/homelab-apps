@@ -3,8 +3,8 @@
 
 name: timbot
 description: Twitch/Discord integration bot for clips, live alerts, and voice management
-version: "1.0.0"
-image: harbor.dev.thebozic.com/timbot/timbot:1.0.0
+version: "1.0.1"
+image: harbor.dev.thebozic.com/timbot/timbot:1.0.1
 build: false  # Pre-built image from Harbor registry
 
 # Domain configuration (not needed - bot doesn't expose HTTP)

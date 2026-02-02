@@ -2,8 +2,8 @@
 # Used by deployment scripts and Ansible for metadata
 
 name: timbot
-description: Twitch/Discord integration bot for clips, live alerts, and voice management
-version: "1.0.4"
+description: Twitch/Discord integration bot for clips, live alerts, voice management, and member verification
+version: "1.0.9"
 image: harbor.dev.thebozic.com/timbot/timbot:latest
 build: false  # Pre-built image from Harbor registry
 
@@ -19,11 +19,22 @@ secrets:
     - TWITCH_CLIENT_ID        # Twitch application client ID
     - TWITCH_CLIENT_SECRET    # Twitch application client secret
   optional:
+    # Channel IDs
     - CLIPS_CHANNEL_ID        # Channel for clip posts
     - LIVE_ALERTS_CHANNEL_ID  # Channel for live notifications
-    - VOICE_CATEGORY_ID       # Category for voice channels
     - TWITCH_OWNER_CHANNELS   # Comma-separated Twitch channel names
     - STREAMER_ROLE_ID        # Role ID for streamers
+    # Voice Management (legacy single category)
+    - VOICE_CATEGORY_ID       # Category for voice channels
+    - VOICE_CHANNEL_PREFIX    # Prefix for voice channel names
+    - MAX_VOICE_CHANNELS      # Max channels per category
+    # Voice Management (multiple categories - JSON format)
+    - VOICE_CATEGORIES        # JSON array: [{"category_id": "123", "prefix": "🎮 Gaming", "max_channels": 10}]
+    # Member Verification
+    - VERIFICATION_ENABLED    # Enable verification system (true/false)
+    - VERIFICATION_CHANNEL_ID # Channel where new members verify
+    - MOD_REVIEW_CHANNEL_ID   # Channel for mod approval requests
+    - VERIFIED_ROLE_ID        # Role assigned to verified members
 
 # Backup configuration
 backup:

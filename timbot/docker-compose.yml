@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Timbot - Twitch/Discord Integration Bot
 # A Discord bot that integrates with Twitch for clips, live alerts, and voice channel management
 #
@@ -31,6 +29,12 @@ services:
       
       # Role configuration
       - STREAMER_ROLE_ID=${STREAMER_ROLE_ID}
+      - VERIFIED_ROLE_ID=${VERIFIED_ROLE_ID}
+      
+      # Verification system
+      - VERIFICATION_ENABLED=${VERIFICATION_ENABLED:-false}
+      - VERIFICATION_CHANNEL_ID=${VERIFICATION_CHANNEL_ID}
+      - MOD_REVIEW_CHANNEL_ID=${MOD_REVIEW_CHANNEL_ID}
       
       # Polling intervals (seconds)
       - CLIP_CHECK_INTERVAL=${CLIP_CHECK_INTERVAL:-300}

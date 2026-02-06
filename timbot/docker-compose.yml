@@ -31,11 +31,17 @@ services:
       # Role configuration
       - STREAMER_ROLE_ID=${STREAMER_ROLE_ID}
       - VERIFIED_ROLE_ID=${VERIFIED_ROLE_ID}
+      - SUBSCRIBER_ROLE_ID=${SUBSCRIBER_ROLE_ID:-}
       
       # Verification system
       - VERIFICATION_ENABLED=${VERIFICATION_ENABLED:-false}
       - VERIFICATION_CHANNEL_ID=${VERIFICATION_CHANNEL_ID}
       - MOD_REVIEW_CHANNEL_ID=${MOD_REVIEW_CHANNEL_ID}
+      
+      # Subscriber sync system
+      - SUBSCRIBER_SYNC_ENABLED=${SUBSCRIBER_SYNC_ENABLED:-false}
+      - SUBSCRIBER_SYNC_INTERVAL=${SUBSCRIBER_SYNC_INTERVAL:-3600}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost}
       
       # Polling intervals (seconds)
       - CLIP_CHECK_INTERVAL=${CLIP_CHECK_INTERVAL:-300}

@@ -36,6 +36,11 @@ secrets:
     - VERIFICATION_CHANNEL_ID # Channel where new members verify
     - MOD_REVIEW_CHANNEL_ID   # Channel for mod approval requests
     - VERIFIED_ROLE_ID        # Role assigned to verified members
+    # Subscriber Sync
+    - SUBSCRIBER_SYNC_ENABLED # Enable subscriber role sync (true/false)
+    - SUBSCRIBER_ROLE_ID      # Role assigned to Twitch subscribers
+    - SUBSCRIBER_SYNC_INTERVAL # Sync interval in seconds (default: 3600)
+    - OAUTH_REDIRECT_URI      # OAuth callback URI (default: http://localhost)
 
 # Backup configuration
 backup:

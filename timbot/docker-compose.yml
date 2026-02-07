@@ -21,6 +21,7 @@ services:
       - CLIPS_CHANNEL_ID=${CLIPS_CHANNEL_ID}
       - LIVE_ALERTS_CHANNEL_ID=${LIVE_ALERTS_CHANNEL_ID}
       - FEATURED_ALERTS_CHANNEL_ID=${FEATURED_ALERTS_CHANNEL_ID:-}  # Separate channel for owner/featured streamers
+      - ADMIN_CHANNEL_ID=${ADMIN_CHANNEL_ID:-}  # Restrict admin commands to this channel
       - VOICE_CATEGORY_ID=${VOICE_CATEGORY_ID}
       
       # Twitch configuration (from Infisical: /services/timbot/)

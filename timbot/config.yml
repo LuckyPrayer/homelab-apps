@@ -23,6 +23,7 @@ secrets:
     - CLIPS_CHANNEL_ID        # Channel for clip posts
     - LIVE_ALERTS_CHANNEL_ID  # Channel for live notifications (watched/community streamers)
     - FEATURED_ALERTS_CHANNEL_ID  # Separate channel for owner/featured streamer alerts
+    - ADMIN_CHANNEL_ID        # Restrict admin commands to this channel (optional)
     - TWITCH_OWNER_CHANNELS   # Comma-separated Twitch channel names
     - STREAMER_ROLE_ID        # Role ID for streamers
     # Voice Management (legacy single category)

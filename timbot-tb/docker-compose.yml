@@ -1,15 +1,15 @@
-# Timbot MH - Mental Hospital Discord Bot
+# Timbot TB - The Batcave Discord Bot
 # A Discord bot that integrates with Twitch for clips, live alerts, and voice channel management
 #
 # Deployed via homelab-apps manifest
 # Secrets: DISCORD_BOT_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET (all required)
-# Infisical path: /services/timbot/MH
+# Infisical path: /services/timbot/TB
 # Docs: See README.md
 
 services:
-  timbot-mh:
+  timbot-tb:
     image: harbor.prod.thebozic.com/timbot/timbot:latest
-    container_name: timbot-mh
+    container_name: timbot-tb
     user: "3002:3002"  # Run as docker-svc user
     environment:
       # Discord configuration

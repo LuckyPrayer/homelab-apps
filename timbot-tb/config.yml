@@ -1,9 +1,9 @@
-# Timbot MH - App Configuration
-# Mental Hospital Discord Bot
+# Timbot TB - App Configuration
+# The Batcave Discord Bot
 # Used by deployment scripts and Ansible for metadata
 
-name: timbot-mh
-description: Twitch/Discord integration bot for Mental Hospital server
+name: timbot-tb
+description: Twitch/Discord integration bot for The Batcave server
 version: "1.0.14"
 image: harbor.prod.thebozic.com/timbot/timbot:latest
 build: false  # Pre-built image from Harbor registry
@@ -13,7 +13,7 @@ domain: null
 
 # Secrets configuration
 secrets:
-  infisical_path: /services/timbot/MH
+  infisical_path: /services/timbot/TB
   required:
     - DISCORD_BOT_TOKEN       # Discord bot token
     - DISCORD_GUILD_ID        # Discord server ID

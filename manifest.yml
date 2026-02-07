@@ -40,7 +40,7 @@ profiles:
   social-prod:
     description: Discord bots and social integrations (Prod)
     apps:
-      - timbot-mh
+      - timbot-tb
   
   media:
     description: Media servers and management

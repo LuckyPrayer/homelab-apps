@@ -8,6 +8,12 @@ name: n8n
 description: Workflow automation platform
 image: docker.n8n.io/n8nio/n8n:1.122.2
 
+# Data directory ownership (UID:GID for container user)
+# n8n runs as user 1000 inside container, but we run as docker-svc (3002)
+data_owner:
+  uid: 3002
+  gid: 3002
+
 # No secrets required
 secrets:
   infisical_path: null

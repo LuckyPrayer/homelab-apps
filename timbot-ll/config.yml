@@ -8,6 +8,12 @@ version: "1.0.14"
 image: harbor.dev.thebozic.com/timbot/timbot:latest
 build: false  # Pre-built image from Harbor registry
 
+# Data directory ownership (UID:GID for container user)
+# timbot runs as user 3002:3002 inside container
+data_owner:
+  uid: 3002
+  gid: 3002
+
 # Domain configuration (not needed - bot doesn't expose HTTP)
 domain: null
 

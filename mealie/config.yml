@@ -11,6 +11,12 @@ domain:
   prefix: mealie              # Results in mealie.{env}.{base_domain}
   port: 9000                  # Internal container port
 
+# Data directory ownership (UID:GID for container user)
+# mealie runs as user 1000 inside container, but we run as docker-svc (3002)
+data_owner:
+  uid: 3002
+  gid: 3002
+
 # Secrets configuration
 secrets:
   infisical_path: null        # No secrets required

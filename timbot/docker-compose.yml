@@ -43,6 +43,10 @@ services:
       - SUBSCRIBER_SYNC_INTERVAL=${SUBSCRIBER_SYNC_INTERVAL:-3600}
       - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost}
       
+      # Ban sync system (requires moderator:read:banned_users scope)
+      - BAN_SYNC_ENABLED=${BAN_SYNC_ENABLED:-false}
+      - BAN_SYNC_ACTION=${BAN_SYNC_ACTION:-kick}
+      
       # Polling intervals (seconds)
       - CLIP_CHECK_INTERVAL=${CLIP_CHECK_INTERVAL:-300}
       - LIVE_CHECK_INTERVAL=${LIVE_CHECK_INTERVAL:-60}

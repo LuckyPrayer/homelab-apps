@@ -3,7 +3,7 @@
 
 name: timbot
 description: Twitch/Discord integration bot for clips, live alerts, voice management, and member verification
-version: "1.0.9"
+version: "1.0.13"
 image: harbor.dev.thebozic.com/timbot/timbot:latest
 build: false  # Pre-built image from Harbor registry
 
@@ -41,6 +41,9 @@ secrets:
     - SUBSCRIBER_ROLE_ID      # Role assigned to Twitch subscribers
     - SUBSCRIBER_SYNC_INTERVAL # Sync interval in seconds (default: 3600)
     - OAUTH_REDIRECT_URI      # OAuth callback URI (default: http://localhost)
+    # Ban Sync
+    - BAN_SYNC_ENABLED        # Enable Twitch ban sync to Discord (true/false)
+    - BAN_SYNC_ACTION         # Action for banned users: kick or ban (default: kick)
 
 # Backup configuration
 backup:

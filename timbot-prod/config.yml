@@ -1,0 +1,84 @@
+# Timbot Prod - App Configuration
+# Used by deployment scripts and Ansible for metadata
+
+name: timbot-prod
+description: Twitch/Discord integration bot for clips, live alerts, voice management, and member verification (Production)
+version: "1.0.14"
+image: harbor.prod.thebozic.com/timbot/timbot:latest
+build: false  # Pre-built image from Harbor registry
+
+# Domain configuration (not needed - bot doesn't expose HTTP)
+domain: null
+
+# Secrets configuration
+secrets:
+  infisical_path: /services/timbot-prod
+  required:
+    - DISCORD_BOT_TOKEN       # Discord bot token
+    - DISCORD_GUILD_ID        # Discord server ID
+    - TWITCH_CLIENT_ID        # Twitch application client ID
+    - TWITCH_CLIENT_SECRET    # Twitch application client secret
+  optional:
+    # Channel IDs
+    - CLIPS_CHANNEL_ID        # Channel for clip posts
+    - LIVE_ALERTS_CHANNEL_ID  # Channel for live notifications (watched/community streamers)
+    - FEATURED_ALERTS_CHANNEL_ID  # Separate channel for owner/featured streamer alerts
+    - ADMIN_CHANNEL_ID        # Restrict admin commands to this channel (optional)
+    - TWITCH_OWNER_CHANNELS   # Comma-separated Twitch channel names
+    - STREAMER_ROLE_ID        # Role ID for streamers
+    # Voice Management (legacy single category)
+    - VOICE_CATEGORY_ID       # Category for voice channels
+    - VOICE_CHANNEL_PREFIX    # Prefix for voice channel names
+    - MAX_VOICE_CHANNELS      # Max channels per category
+    # Voice Management (multiple categories - JSON format)
+    - VOICE_CATEGORIES        # JSON array: [{"category_id": "123", "prefix": "🎮 Gaming", "max_channels": 10}]
+    # Member Verification
+    - VERIFICATION_ENABLED    # Enable verification system (true/false)
+    - VERIFICATION_CHANNEL_ID # Channel where new members verify
+    - MOD_REVIEW_CHANNEL_ID   # Channel for mod approval requests
+    - VERIFIED_ROLE_ID        # Role assigned to verified members
+    # Subscriber Sync
+    - SUBSCRIBER_SYNC_ENABLED # Enable subscriber role sync (true/false)
+    - SUBSCRIBER_ROLE_ID      # Role assigned to Twitch subscribers
+    - SUBSCRIBER_SYNC_INTERVAL # Sync interval in seconds (default: 3600)
+    - OAUTH_REDIRECT_URI      # OAuth callback URI (default: http://localhost)
+    # Ban Sync
+    - BAN_SYNC_ENABLED        # Enable Twitch ban sync to Discord (true/false)
+    - BAN_SYNC_ACTION         # Action for banned users: kick or ban (default: kick)
+
+# Backup configuration
+backup:
+  enabled: true
+  paths:
+    - ./data                  # Persistent state (posted clips, stream states)
+  exclude:
+    - ./data/logs             # Logs don't need backup
+  stop_during_backup: false   # Can backup while running
+
+# Restore configuration
+restore:
+  enabled: true
+  priority: 50                # Medium priority
+  pre_restore: null
+  post_restore: null
+
+# Dependencies
+dependencies: []              # No dependencies on other homelab services
+
+# Resource limits
+resources:
+  memory_limit: 128M
+  cpu_limit: "0.25"
+
+# Health check
+healthcheck:
+  type: process               # Check if bot process is running
+  interval: 30s
+  timeout: 10s
+
+# Tags
+tags:
+  - discord
+  - twitch
+  - bot
+  - social

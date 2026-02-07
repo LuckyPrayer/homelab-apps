@@ -1,15 +1,15 @@
-# Timbot LL - Lucky's Lab Discord Bot
+# Timbot Dev - Twitch/Discord Integration Bot
 # A Discord bot that integrates with Twitch for clips, live alerts, and voice channel management
 #
 # Deployed via homelab-apps manifest
 # Secrets: DISCORD_BOT_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET (all required)
-# Infisical path: /services/timbot/LL
+# Infisical path: /services/timbot/
 # Docs: See README.md
 
 services:
-  timbot-ll:
+  timbot-dev:
     image: harbor.dev.thebozic.com/timbot/timbot:latest
-    container_name: timbot-ll
+    container_name: timbot-dev
     user: "3002:3002"  # Run as docker-svc user
     environment:
       # Discord configuration
@@ -38,7 +38,6 @@ services:
       - VERIFICATION_ENABLED=${VERIFICATION_ENABLED:-false}
       - VERIFICATION_CHANNEL_ID=${VERIFICATION_CHANNEL_ID}
       - MOD_REVIEW_CHANNEL_ID=${MOD_REVIEW_CHANNEL_ID}
-      - VERIFICATION_APPROVER_ROLE_ID=${VERIFICATION_APPROVER_ROLE_ID:-}
       
       # Subscriber sync system
       - SUBSCRIBER_SYNC_ENABLED=${SUBSCRIBER_SYNC_ENABLED:-false}
@@ -65,13 +64,6 @@ services:
       - CLIPS_ENABLED=${CLIPS_ENABLED:-true}
       - LIVE_ALERTS_ENABLED=${LIVE_ALERTS_ENABLED:-true}
       - VOICE_MANAGER_ENABLED=${VOICE_MANAGER_ENABLED:-true}
-      
-      # AI Greeting system
-      - AI_GREETING_ENABLED=${AI_GREETING_ENABLED:-false}
-      - AI_GREETING_CHANNEL_ID=${AI_GREETING_CHANNEL_ID:-}
-      - AI_GREETING_API_KEY=${AI_GREETING_API_KEY:-}
-      - AI_GREETING_MODEL=${AI_GREETING_MODEL:-gpt-4o-mini}
-      - AI_GREETING_INSTRUCTIONS=${AI_GREETING_INSTRUCTIONS:-}
       
       # Timezone
       - TZ=${TZ:-America/Toronto}

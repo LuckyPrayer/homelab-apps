@@ -32,10 +32,15 @@ profiles:
     apps:
       - stardew-server
   
-  social:
-    description: Discord bots and social integrations
+  social-dev:
+    description: Discord bots and social integrations (Dev)
     apps:
-      - timbot
+      - timbot-ll
+  
+  social-prod:
+    description: Discord bots and social integrations (Prod)
+    apps:
+      - timbot-mh
   
   media:
     description: Media servers and management
@@ -64,7 +69,7 @@ hosts:
       - productivity
       - recipes
       - gaming
-      - social         # Discord/Twitch bot integrations
+      - social-dev      # Discord/Twitch bot integrations
     apps:
       - minecraft-ll   # Dev-only Minecraft server
     exclude: []        # Apps to exclude from profiles
@@ -109,6 +114,7 @@ hosts:
       - core
       - productivity
       - recipes
+      - social-prod    # Discord/Twitch bot integrations
     apps:
       - minecraft-mh   # Prod-only Minecraft server (Mental Hospital SMP)
     exclude: []

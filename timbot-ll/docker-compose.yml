@@ -1,0 +1,84 @@
+# Timbot LL - Lucky's Lab Discord Bot
+# A Discord bot that integrates with Twitch for clips, live alerts, and voice channel management
+#
+# Deployed via homelab-apps manifest
+# Secrets: DISCORD_BOT_TOKEN, TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET (all required)
+# Infisical path: /services/timbot/LL
+# Docs: See README.md
+
+services:
+  timbot-ll:
+    image: harbor.dev.thebozic.com/timbot/timbot:latest
+    container_name: timbot-ll
+    user: "3002:3002"  # Run as docker-svc user
+    environment:
+      # Discord configuration
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - COMMAND_PREFIX=${COMMAND_PREFIX:-!}
+      
+      # Discord channel IDs
+      - CLIPS_CHANNEL_ID=${CLIPS_CHANNEL_ID}
+      - LIVE_ALERTS_CHANNEL_ID=${LIVE_ALERTS_CHANNEL_ID}
+      - FEATURED_ALERTS_CHANNEL_ID=${FEATURED_ALERTS_CHANNEL_ID:-}  # Separate channel for owner/featured streamers
+      - ADMIN_CHANNEL_ID=${ADMIN_CHANNEL_ID:-}  # Restrict admin commands to this channel
+      - VOICE_CATEGORY_ID=${VOICE_CATEGORY_ID}
+      
+      # Twitch configuration (from Infisical: /services/timbot/)
+      - TWITCH_CLIENT_ID=${TWITCH_CLIENT_ID}
+      - TWITCH_CLIENT_SECRET=${TWITCH_CLIENT_SECRET}
+      - TWITCH_OWNER_CHANNELS=${TWITCH_OWNER_CHANNELS}
+      
+      # Role configuration
+      - STREAMER_ROLE_ID=${STREAMER_ROLE_ID}
+      - VERIFIED_ROLE_ID=${VERIFIED_ROLE_ID}
+      - SUBSCRIBER_ROLE_ID=${SUBSCRIBER_ROLE_ID:-}
+      
+      # Verification system
+      - VERIFICATION_ENABLED=${VERIFICATION_ENABLED:-false}
+      - VERIFICATION_CHANNEL_ID=${VERIFICATION_CHANNEL_ID}
+      - MOD_REVIEW_CHANNEL_ID=${MOD_REVIEW_CHANNEL_ID}
+      
+      # Subscriber sync system
+      - SUBSCRIBER_SYNC_ENABLED=${SUBSCRIBER_SYNC_ENABLED:-false}
+      - SUBSCRIBER_SYNC_INTERVAL=${SUBSCRIBER_SYNC_INTERVAL:-3600}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost}
+      
+      # Ban sync system (requires moderator:read:banned_users scope)
+      - BAN_SYNC_ENABLED=${BAN_SYNC_ENABLED:-false}
+      - BAN_SYNC_ACTION=${BAN_SYNC_ACTION:-kick}
+      
+      # Polling intervals (seconds)
+      - CLIP_CHECK_INTERVAL=${CLIP_CHECK_INTERVAL:-300}
+      - LIVE_CHECK_INTERVAL=${LIVE_CHECK_INTERVAL:-60}
+      - VOICE_CHECK_INTERVAL=${VOICE_CHECK_INTERVAL:-10}
+      
+      # Voice channel settings (legacy single category)
+      - VOICE_CHANNEL_PREFIX=${VOICE_CHANNEL_PREFIX:-🎮 Gaming}
+      - MAX_VOICE_CHANNELS=${MAX_VOICE_CHANNELS:-10}
+      # Multiple voice categories (JSON format, overrides legacy if set)
+      # Example: '[{"category_id": "123", "prefix": "🎮 Gaming"}, {"category_id": "456", "prefix": "🎵 Music"}]'
+      - VOICE_CATEGORIES=${VOICE_CATEGORIES:-}
+      
+      # Feature toggles
+      - CLIPS_ENABLED=${CLIPS_ENABLED:-true}
+      - LIVE_ALERTS_ENABLED=${LIVE_ALERTS_ENABLED:-true}
+      - VOICE_MANAGER_ENABLED=${VOICE_MANAGER_ENABLED:-true}
+      
+      # Timezone
+      - TZ=${TZ:-America/Toronto}
+    volumes:
+      - ./data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    networks:
+      - homelab
+    # No ports needed - bot connects outbound to Discord/Twitch
+
+networks:
+  homelab:
+    name: homelab
+    external: true

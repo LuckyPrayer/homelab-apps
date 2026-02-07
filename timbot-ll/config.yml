@@ -1,9 +1,10 @@
-# Timbot - App Configuration
+# Timbot LL - App Configuration
+# Lucky's Lab Discord Bot
 # Used by deployment scripts and Ansible for metadata
 
-name: timbot
-description: Twitch/Discord integration bot for clips, live alerts, voice management, and member verification
-version: "1.0.13"
+name: timbot-ll
+description: Twitch/Discord integration bot for Lucky's Lab server
+version: "1.0.14"
 image: harbor.dev.thebozic.com/timbot/timbot:latest
 build: false  # Pre-built image from Harbor registry
 
@@ -12,7 +13,7 @@ domain: null
 
 # Secrets configuration
 secrets:
-  infisical_path: /services/timbot
+  infisical_path: /services/timbot/LL
   required:
     - DISCORD_BOT_TOKEN       # Discord bot token
     - DISCORD_GUILD_ID        # Discord server ID

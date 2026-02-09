@@ -66,6 +66,11 @@ services:
       - LIVE_ALERTS_ENABLED=${LIVE_ALERTS_ENABLED:-true}
       - VOICE_MANAGER_ENABLED=${VOICE_MANAGER_ENABLED:-true}
       
+      # Custom live alert messages (supports {name}, {game}, {url}, {title}, {viewers} placeholders)
+      - LIVE_ALERT_MSG_FEATURED=${LIVE_ALERT_MSG_FEATURED:-}
+      - LIVE_ALERT_MSG_COMMUNITY=${LIVE_ALERT_MSG_COMMUNITY:-}
+      - LIVE_ALERT_MSG_EXTERNAL=${LIVE_ALERT_MSG_EXTERNAL:-}
+      
       # AI Greeting system
       - AI_GREETING_ENABLED=${AI_GREETING_ENABLED:-false}
       - AI_GREETING_CHANNEL_ID=${AI_GREETING_CHANNEL_ID:-}

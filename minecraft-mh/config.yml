@@ -14,6 +14,8 @@ image: harbor.prod.thebozic.com/mc-server/minecraft-server:prod-latest
 # Secrets from Infisical
 secrets:
   infisical_path: /services/minecraft/MH
+  per_app_token: true
+  generate_env_file: true
 
 # Backup configuration
 backup:

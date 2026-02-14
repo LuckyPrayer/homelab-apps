@@ -13,7 +13,6 @@ profiles:
   core:
     description: Essential infrastructure services
     apps:
-      - traefik
       - homepage
   
   productivity:

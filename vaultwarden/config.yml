@@ -18,6 +18,12 @@ domain:
 # Secrets configuration
 secrets:
   infisical_path: /services/vaultwarden
+  # Per-app token: fetch from /infrastructure/tokens/<app_name> before deployment
+  # This limits secret exposure to only this app's path
+  per_app_token: true
+  # Generate .env file with secrets instead of runtime injection
+  # Allows containers to restart without Infisical access
+  generate_env_file: true
   required:
     - VAULTWARDEN_ADMIN_TOKEN  # Admin panel access
   optional:

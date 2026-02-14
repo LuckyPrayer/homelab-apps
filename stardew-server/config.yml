@@ -25,6 +25,8 @@ ports:
 # Secrets from Infisical
 secrets:
   infisical_path: /services/stardew-server
+  per_app_token: true
+  generate_env_file: true
   required:
     - STARDEW_STEAM_USER
     - STARDEW_STEAM_PASS

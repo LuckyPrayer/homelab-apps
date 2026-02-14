@@ -20,6 +20,8 @@ domain: null
 # Secrets configuration
 secrets:
   infisical_path: /services/timbot/TB
+  per_app_token: true
+  generate_env_file: true
   required:
     - DISCORD_BOT_TOKEN       # Discord bot token
     - DISCORD_GUILD_ID        # Discord server ID

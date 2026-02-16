@@ -53,6 +53,11 @@ profiles:
       - grafana
       - prometheus
       - node-exporter
+  
+  external-monitoring:
+    description: External status monitoring from cloud
+    apps:
+      - uptime-kuma
 
 # =============================================================================
 # HOSTS - Per-host application assignments
@@ -105,6 +110,20 @@ hosts:
       enabled: false   # Monitoring data is ephemeral
 
   # ---------------------------------------------------------------------------
+  # AWS Cloud Hosts (Development)
+  # ---------------------------------------------------------------------------
+  pharos-dev:
+    env: dev
+    profiles:
+      - external-monitoring
+    apps: []
+    exclude: []
+    restore:
+      enabled: true
+      priority_order:
+        - uptime-kuma
+
+  # ---------------------------------------------------------------------------
   # Production Environment
   # ---------------------------------------------------------------------------
   orion-prod:
@@ -139,6 +158,20 @@ hosts:
         - harbor
         - jellyfin
         - audiobookshelf
+
+  # ---------------------------------------------------------------------------
+  # AWS Cloud Hosts (Production)
+  # ---------------------------------------------------------------------------
+  pharos-prod:
+    env: prod
+    profiles:
+      - external-monitoring
+    apps: []
+    exclude: []
+    restore:
+      enabled: true
+      priority_order:
+        - uptime-kuma
 
 # =============================================================================
 # GLOBAL SETTINGS

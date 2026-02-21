@@ -9,7 +9,7 @@ version: "3.9"
 
 services:
   mealie:
-    image: ghcr.io/mealie-recipes/mealie:v1.4.0
+    image: ghcr.io/mealie-recipes/mealie:v3.11.0
     container_name: mealie
     user: "3002:3002"  # Run as docker-svc user
     environment:

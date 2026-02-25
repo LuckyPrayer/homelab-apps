@@ -25,6 +25,9 @@ services:
       - ALL
     cap_add:
       - NET_RAW  # Required for ping monitoring
+      - CHOWN    # Required for data directory ownership on startup
+      - SETUID   # Required for startup user switching
+      - SETGID   # Required for startup user switching
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.uptime-kuma.rule=Host(`status.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}`)"

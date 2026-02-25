@@ -35,8 +35,8 @@ services:
       
       # Whitelist Configuration
       - WHITELIST_ENABLED=${MC_WHITELIST_ENABLED:-true}
-      - ENFORCE_WHITELIST=${MC_WHITELIST_ENABLED:-true}
-      - OVERRIDE_WHITELIST=${MC_WHITELIST:-luckyprayer,charms}
+      - ENFORCE_WHITELIST=${MC_WHITELIST_ENABLED:-false}
+      - OVERRIDE_WHITELIST=${MC_WHITELIST:-luckyprayer,highryze666}
       
       # RCON Configuration
       - ENABLE_RCON=true

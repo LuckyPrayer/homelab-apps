@@ -53,11 +53,9 @@ profiles:
       - grafana
       - prometheus
       - node-exporter
-  
-  external-monitoring:
-    description: External status monitoring from cloud
-    apps:
-      - uptime-kuma
+
+# NOTE: uptime-kuma is deployed as infrastructure via Ansible (uptime-kuma role)
+# and is NOT managed through homelab-apps. See playbooks/deploy-pharos.yml.
 
 # =============================================================================
 # HOSTS - Per-host application assignments
@@ -114,14 +112,11 @@ hosts:
   # ---------------------------------------------------------------------------
   pharos-dev:
     env: dev
-    profiles:
-      - external-monitoring
+    profiles: []           # uptime-kuma managed by Ansible role, not homelab-apps
     apps: []
     exclude: []
     restore:
-      enabled: true
-      priority_order:
-        - uptime-kuma
+      enabled: false       # Backups handled by Ansible/Backrest, not homelab-apps
 
   # ---------------------------------------------------------------------------
   # Production Environment
@@ -164,14 +159,11 @@ hosts:
   # ---------------------------------------------------------------------------
   pharos-prod:
     env: prod
-    profiles:
-      - external-monitoring
+    profiles: []           # uptime-kuma managed by Ansible role, not homelab-apps
     apps: []
     exclude: []
     restore:
-      enabled: true
-      priority_order:
-        - uptime-kuma
+      enabled: false       # Backups handled by Ansible/Backrest, not homelab-apps
 
 # =============================================================================
 # GLOBAL SETTINGS

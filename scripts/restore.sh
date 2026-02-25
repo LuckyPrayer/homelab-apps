@@ -148,7 +148,18 @@ discover_apps() {
         app_name=$(basename "$app_dir")
         [[ "$app_name" == "scripts" ]] && continue
         
-        [[ ! -f "${app_dir}/config.yml" ]] && continue
+        local config_file="${app_dir}/config.yml"
+        [[ ! -f "$config_file" ]] && continue
+        
+        # Check allowed_hosts restriction (if set, current host must be in the list)
+        local allowed_hosts
+        allowed_hosts=$(yq -r '.allowed_hosts[]? // empty' "$config_file" 2>/dev/null || true)
+        if [[ -n "$allowed_hosts" ]]; then
+            if ! echo "$allowed_hosts" | grep -qxF "$(hostname)"; then
+                log_info "Skipping $app_name - not allowed on $(hostname)"
+                continue
+            fi
+        fi
         
         echo "$app_name"
     done | sort -u

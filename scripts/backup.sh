@@ -147,6 +147,16 @@ discover_backup_apps() {
         backup_enabled=$(get_config "$app_name" ".backup.enabled" "true")
         [[ "$backup_enabled" != "true" ]] && continue
         
+        # Check allowed_hosts restriction (if set, current host must be in the list)
+        local allowed_hosts
+        allowed_hosts=$(yq -r '.allowed_hosts[]? // empty' "$config_file" 2>/dev/null || true)
+        if [[ -n "$allowed_hosts" ]]; then
+            if ! echo "$allowed_hosts" | grep -qxF "$(hostname)"; then
+                log_info "Skipping $app_name - not allowed on $(hostname)"
+                continue
+            fi
+        fi
+        
         apps+=("$app_name")
     done
     

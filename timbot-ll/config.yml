@@ -8,6 +8,10 @@ version: "1.0.14"
 image: harbor.dev.thebozic.com/timbot/timbot:latest
 build: false  # Pre-built image from Harbor registry
 
+# Host restriction - only deploy/backup/restore on these hosts
+allowed_hosts:
+  - orion-dev
+
 # Data directory ownership (UID:GID for container user)
 # timbot runs as user 3002:3002 inside container
 data_owner:

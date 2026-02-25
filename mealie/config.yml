@@ -6,6 +6,11 @@ description: Self-hosted recipe manager and meal planner
 version: v3.11.0
 image: ghcr.io/mealie-recipes/mealie:v3.11.0
 
+# Host restriction - only deploy/backup/restore on these hosts
+allowed_hosts:
+  - orion-dev
+  - orion-prod
+
 # Domain configuration
 domain:
   prefix: mealie              # Results in mealie.{env}.{base_domain}

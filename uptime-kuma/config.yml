@@ -6,6 +6,11 @@ description: Self-hosted status monitoring tool for external service checks
 version: "1"
 image: louislam/uptime-kuma:1
 
+# Host restriction - only deploy/backup/restore on these hosts
+allowed_hosts:
+  - pharos-dev
+  - pharos-prod
+
 # Domain configuration
 domain:
   prefix: status              # Results in status.{env}.{base_domain}

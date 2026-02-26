@@ -10,11 +10,11 @@ image: noenv/stardew-multiplayer-docker:latest
 allowed_hosts:
   - orion-dev
 
-# Custom install path (not in /opt/stacks)
+# Custom install path (standalone app)
 paths:
   compose_dir: "."
   data_dir: "./data"
-  install_path: "/opt/stardew-server"
+  install_path: "/opt/apps/stardew-server"
 
 # Domain configuration
 domain:

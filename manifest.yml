@@ -178,7 +178,7 @@ settings:
   repo:
     url: git@github.com:LuckyPrayer/homelab-apps.git
     branch: main
-    deploy_path: /opt/homelab-apps
+    deploy_path: /opt/apps
   
   # Backup integration
   backup:

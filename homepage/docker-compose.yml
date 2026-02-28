@@ -15,7 +15,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TZ:-America/Toronto}
-      - HOMEPAGE_ALLOWED_HOSTS=home.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com},localhost:3001
+      - HOMEPAGE_ALLOWED_HOSTS=home.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com},infra.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com},localhost:3001
     volumes:
       - ./config:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro

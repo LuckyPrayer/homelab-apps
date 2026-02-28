@@ -15,6 +15,7 @@ image: ghcr.io/gethomepage/homepage:latest
 allowed_hosts:
   - orion-dev
   - orion-prod
+  - hephaestus-dev
   - hephaestus-prod
 
 # No secrets required (optional integrations only)

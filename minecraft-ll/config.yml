@@ -38,6 +38,11 @@ backup:
     - "logs/*"
     - "cache/*"
   pre_backup: |
+    # Warn players via n8n workflow before backup
+    curl -s -X POST http://localhost:5678/webhook/minecraft-backup-warning \
+      -H 'Content-Type: application/json' -d '{}' || true
+    # Wait for warning countdown to complete (2 minutes + buffer)
+    sleep 130
     # Save all and disable autosave before backup
     docker exec minecraft-ll rcon-cli save-all 2>/dev/null || true
     docker exec minecraft-ll rcon-cli save-off 2>/dev/null || true

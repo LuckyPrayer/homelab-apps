@@ -1,0 +1,287 @@
+{
+  "name": "Minecraft LL - Backup Warning",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "minecraft-backup-warning",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [280, 300],
+      "webhookId": "mc-backup-warn-001"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', message: 'Backup warning sequence started' }) }}"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000002",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec minecraft-ll rcon-cli title @a times 10 70 20 && docker exec minecraft-ll rcon-cli title @a title '{\"text\":\"⚠ BACKUP\",\"color\":\"gold\",\"bold\":true}' && docker exec minecraft-ll rcon-cli title @a subtitle '{\"text\":\"Server shutting down in 2 minutes!\",\"color\":\"yellow\"}' && docker exec minecraft-ll rcon-cli tellraw @a '[\"\",{\"text\":\"[Backup] \",\"color\":\"gold\",\"bold\":true},{\"text\":\"Server shutting down for backup in 2 minutes!\",\"color\":\"yellow\"}]' && docker exec minecraft-ll rcon-cli playsound minecraft:block.note_block.pling master @a ~ ~ ~ 1 1"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000010",
+      "name": "Warn 2 Minutes",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [720, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "",
+          "name": "orion-dev service user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000011",
+      "name": "Wait 60s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec minecraft-ll rcon-cli title @a times 10 70 20 && docker exec minecraft-ll rcon-cli title @a title '{\"text\":\"⚠ BACKUP\",\"color\":\"gold\",\"bold\":true}' && docker exec minecraft-ll rcon-cli title @a subtitle '{\"text\":\"Server shutting down in 1 minute!\",\"color\":\"yellow\"}' && docker exec minecraft-ll rcon-cli tellraw @a '[\"\",{\"text\":\"[Backup] \",\"color\":\"gold\",\"bold\":true},{\"text\":\"Server shutting down for backup in 1 minute!\",\"color\":\"yellow\"}]' && docker exec minecraft-ll rcon-cli playsound minecraft:block.note_block.pling master @a ~ ~ ~ 1 1"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000012",
+      "name": "Warn 1 Minute",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1160, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "",
+          "name": "orion-dev service user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000013",
+      "name": "Wait 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1380, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec minecraft-ll rcon-cli title @a times 10 70 20 && docker exec minecraft-ll rcon-cli title @a title '{\"text\":\"⚠ BACKUP\",\"color\":\"red\",\"bold\":true}' && docker exec minecraft-ll rcon-cli title @a subtitle '{\"text\":\"Server shutting down in 30 seconds!\",\"color\":\"yellow\"}' && docker exec minecraft-ll rcon-cli tellraw @a '[\"\",{\"text\":\"[Backup] \",\"color\":\"red\",\"bold\":true},{\"text\":\"Server shutting down in 30 seconds!\",\"color\":\"yellow\"}]' && docker exec minecraft-ll rcon-cli playsound minecraft:block.note_block.pling master @a ~ ~ ~ 1 1"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000014",
+      "name": "Warn 30 Seconds",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1600, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "",
+          "name": "orion-dev service user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 20,
+        "unit": "seconds"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000015",
+      "name": "Wait 20s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1820, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec minecraft-ll rcon-cli title @a times 10 70 20 && docker exec minecraft-ll rcon-cli title @a title '{\"text\":\"⚠ BACKUP\",\"color\":\"red\",\"bold\":true}' && docker exec minecraft-ll rcon-cli title @a subtitle '{\"text\":\"Server shutting down in 10 seconds!\",\"color\":\"yellow\"}' && docker exec minecraft-ll rcon-cli tellraw @a '[\"\",{\"text\":\"[Backup] \",\"color\":\"red\",\"bold\":true},{\"text\":\"Server shutting down in 10 seconds!\",\"color\":\"yellow\"}]' && docker exec minecraft-ll rcon-cli playsound minecraft:block.note_block.bell master @a ~ ~ ~ 1 1"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000016",
+      "name": "Warn 10 Seconds",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [2040, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "",
+          "name": "orion-dev service user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000017",
+      "name": "Wait 10s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2260, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec minecraft-ll rcon-cli title @a times 10 70 20 && docker exec minecraft-ll rcon-cli title @a title '{\"text\":\"⚠ BACKUP\",\"color\":\"dark_red\",\"bold\":true}' && docker exec minecraft-ll rcon-cli title @a subtitle '{\"text\":\"Server shutting down NOW!\",\"color\":\"red\"}' && docker exec minecraft-ll rcon-cli tellraw @a '[\"\",{\"text\":\"[Backup] \",\"color\":\"dark_red\",\"bold\":true},{\"text\":\"Server shutting down NOW!\",\"color\":\"red\"}]' && docker exec minecraft-ll rcon-cli playsound minecraft:entity.ender_dragon.growl master @a ~ ~ ~ 1 1"
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000018",
+      "name": "Shutdown NOW",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [2480, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "",
+          "name": "orion-dev service user"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Minecraft LL - Backup Warning\n\nSSHes into orion-dev as a service user and runs `rcon-cli` commands\nto warn all online players before the server shuts down for backup.\n\n**Webhook:** POST /webhook/minecraft-backup-warning\n\n**Credential required:** \"orion-dev service user\" (SSH password or key)\n- The service user must be in the `docker` group on orion-dev\n\n**Warning sequence:**\n- T+0s — 2 minute warning (gold)\n- T+60s — 1 minute warning (gold)\n- T+90s — 30 second warning (red)\n- T+110s — 10 second warning (red)\n- T+120s — Shutdown NOW! (dark red)",
+        "width": 480,
+        "height": 360
+      },
+      "id": "a1b2c3d4-0001-4000-a000-000000000004",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [240, -100]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Warn 2 Minutes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warn 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Wait 60s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 60s": {
+      "main": [
+        [
+          {
+            "node": "Warn 1 Minute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warn 1 Minute": {
+      "main": [
+        [
+          {
+            "node": "Wait 30s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30s": {
+      "main": [
+        [
+          {
+            "node": "Warn 30 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warn 30 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Wait 20s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 20s": {
+      "main": [
+        [
+          {
+            "node": "Warn 10 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warn 10 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Wait 10s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 10s": {
+      "main": [
+        [
+          {
+            "node": "Shutdown NOW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "versionId": "1",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

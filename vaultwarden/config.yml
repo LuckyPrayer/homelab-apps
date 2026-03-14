@@ -3,8 +3,8 @@
 
 name: vaultwarden
 description: Bitwarden-compatible password manager
-version: "1.32.7"
-image: vaultwarden/server:1.32.7-alpine
+version: "1.35.4"
+image: vaultwarden/server:1.35.4-alpine
 
 # Host restriction - only deploy/backup/restore on these hosts
 allowed_hosts:

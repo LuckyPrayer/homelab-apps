@@ -13,7 +13,6 @@ image: harbor.prod.thebozic.com/mc-server/minecraft-server:prod-latest
 
 # Host restriction - only deploy/backup/restore on these hosts
 allowed_hosts:
-  - orion-dev
   - orion-prod
 
 # Secrets from Infisical
@@ -38,6 +37,11 @@ backup:
     - "logs/*"
     - "cache/*"
   pre_backup: |
+    # Warn players via n8n workflow before backup
+    curl -s -X POST http://localhost:5678/webhook/minecraft-mh-backup-warning \
+      -H 'Content-Type: application/json' -d '{}' || true
+    # Wait for warning countdown to complete (2 minutes + buffer)
+    sleep 130
     # Save all and disable autosave before backup
     docker exec minecraft-mh rcon-cli save-all 2>/dev/null || true
     docker exec minecraft-mh rcon-cli save-off 2>/dev/null || true

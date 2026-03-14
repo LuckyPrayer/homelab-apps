@@ -8,7 +8,7 @@
 
 services:
   vaultwarden:
-    image: vaultwarden/server:1.32.7-alpine
+    image: vaultwarden/server:1.35.4-alpine
     container_name: vaultwarden
     user: "3002:3002"  # Run as docker-svc user
     environment:
@@ -23,6 +23,14 @@ services:
       # Admin token (from Infisical: /services/vaultwarden/VAULTWARDEN_ADMIN_TOKEN)
       - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN}
       
+      # SMTP configuration (from Infisical: /services/vaultwarden/)
+      - SMTP_HOST=${SMTP_HOST:-smtp.mailgun.org}
+      - SMTP_FROM=${SMTP_FROM:-vaultwarden@homelab.thebozic.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURITY=starttls
+      - SMTP_USERNAME=${VAULTWARDEN_SMTP_USERNAME}
+      - SMTP_PASSWORD=${VAULTWARDEN_SMTP_PASSWORD}
+
       # Server settings
       - WEBSOCKET_ENABLED=true
       - ROCKET_PORT=8080

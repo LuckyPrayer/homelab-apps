@@ -9,6 +9,7 @@
 #   - homelab_apps_branch: Git branch (default: main)
 #   - homelab_apps_path: Local path on host (default: /opt/apps)
 #   - homelab_apps_restore: Whether to restore from backup (default: from manifest)
+#   - app_filter: When set, deploy only this single app (e.g. "vaultwarden")
 
 - name: Set default variables
   ansible.builtin.set_fact:
@@ -80,6 +81,11 @@
 - name: Remove excluded apps
   ansible.builtin.set_fact:
     final_apps: "{{ all_apps | difference(host_config.exclude | default([])) | list }}"
+
+- name: Filter to specific app (app_filter)
+  ansible.builtin.set_fact:
+    final_apps: "{{ final_apps | select('equalto', app_filter) | list }}"
+  when: app_filter is defined and app_filter | length > 0
 
 - name: Display apps to deploy
   ansible.builtin.debug:

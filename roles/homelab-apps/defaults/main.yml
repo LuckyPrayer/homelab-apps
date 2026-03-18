@@ -1,6 +1,12 @@
 ---
 # Defaults for homelab-apps role
 
+# Operation mode: deploy, backup, or restore
+# - deploy:  Full deployment (deploy apps + restore if enabled + management scripts)
+# - backup:  Run backup.sh for resolved apps
+# - restore: Restore apps from B2/restic backup (force restore, skip deploy)
+homelab_apps_mode: "deploy"
+
 # Git repository settings
 homelab_apps_repo: "https://github.com/LuckyPrayer/homelab-apps.git"
 homelab_apps_branch: "main"
@@ -11,6 +17,10 @@ homelab_stacks_path: "/opt/stacks"
 
 # Whether to run restore during deployment
 homelab_apps_restore: true
+
+# Force restore even if data directory already has content
+# Only used in restore mode
+force_restore: false
 
 # Docker user/group for file ownership
 docker_user: "root"

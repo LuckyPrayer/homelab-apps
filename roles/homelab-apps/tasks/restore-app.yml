@@ -54,10 +54,23 @@
 
 - name: "{{ app_name }} - Skip restore if data exists"
   ansible.builtin.debug:
-    msg: "Data already exists for {{ app_name }}, skipping restore"
+    msg: "Data already exists for {{ app_name }}, skipping restore (use force_restore=true to override)"
   when:
     - app_restore_enabled | bool
     - data_dir_contents.matched | default(0) > 0
+    - not (force_restore | default(false) | bool)
+
+- name: "{{ app_name }} - Force restore: clearing existing data"
+  ansible.builtin.debug:
+    msg: "Force restore enabled - will overwrite existing data for {{ app_name }}"
+  when:
+    - app_restore_enabled | bool
+    - data_dir_contents.matched | default(0) > 0
+    - force_restore | default(false) | bool
+
+- name: "{{ app_name }} - Set restore proceed flag"
+  ansible.builtin.set_fact:
+    _restore_proceed: "{{ app_restore_enabled | bool and (data_dir_contents.matched | default(0) == 0 or force_restore | default(false) | bool) }}"
 
 - name: "{{ app_name }} - Run pre-restore hook"
   ansible.builtin.shell: |
@@ -65,8 +78,7 @@
   args:
     chdir: "{{ homelab_apps_path }}/{{ app_name }}"
   when:
-    - app_restore_enabled | bool
-    - data_dir_contents.matched | default(0) == 0
+    - _restore_proceed | bool
     - restore_app_config.restore.pre_restore is defined
     - restore_app_config.restore.pre_restore is not none
     - restore_app_config.restore.pre_restore | string | length > 0
@@ -78,8 +90,7 @@
     cd {{ homelab_apps_path }}/{{ app_name }}
     docker compose down || true
   when:
-    - app_restore_enabled | bool
-    - data_dir_contents.matched | default(0) == 0
+    - _restore_proceed | bool
     - restore_app_config.backup.stop_during_backup | default(false) | bool
 
 - name: "{{ app_name }} - Execute restore from B2"
@@ -138,8 +149,7 @@
   environment:
     PATH: "/usr/local/bin:/usr/bin:/bin"
   when:
-    - app_restore_enabled | bool
-    - data_dir_contents.matched | default(0) == 0
+    - _restore_proceed | bool
     - backup_restic_password is defined
     - backup_b2_bucket is defined
   register: restore_result
@@ -152,8 +162,7 @@
   args:
     chdir: "{{ homelab_apps_path }}/{{ app_name }}"
   when:
-    - app_restore_enabled | bool
-    - data_dir_contents.matched | default(0) == 0
+    - _restore_proceed | bool
     - restore_result is changed
     - restore_app_config.restore.post_restore is defined
     - restore_app_config.restore.post_restore is not none
@@ -170,7 +179,7 @@
     BASE_DOMAIN: "{{ base_domain | default('thebozic.com') }}"
     TZ: "{{ manifest.settings.defaults.TZ | default('America/Toronto') }}"
   when:
-    - app_restore_enabled | bool
+    - _restore_proceed | bool
     - restore_result is changed
 
 - name: "{{ app_name }} - Restore status"

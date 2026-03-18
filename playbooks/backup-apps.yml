@@ -1,0 +1,51 @@
+---
+# Backup Homelab Apps via Semaphore
+#
+# This playbook runs backup.sh for application services on target hosts.
+# The role resolves which apps are assigned per host from manifest.yml
+# and runs backup.sh for each one.
+#
+# Usage in Semaphore:
+#   - Template: "Backup Apps - All Hosts"
+#   - Playbook: playbooks/backup-apps.yml
+#   - Arguments: ["--limit", "orion-dev"]
+#   - Arguments: ["-e", "app_filter=vaultwarden"]
+#
+# Prerequisites:
+#   - Apps deployed (backup.sh and backup.env must exist on host)
+#   - Restic + B2 credentials configured via /opt/scripts/backup.env
+
+- name: Backup Homelab Apps
+  hosts: app_hosts
+  become: true
+  tags:
+    - backup
+
+  pre_tasks:
+    - name: Display backup info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Homelab App Backup                           ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+          - "App filter: {{ app_filter | default('all') }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: homelab-apps
+      vars:
+        homelab_apps_mode: backup
+
+  post_tasks:
+    - name: Backup complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Backup operation complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"

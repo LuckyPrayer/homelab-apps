@@ -173,39 +173,135 @@
   ansible.builtin.debug:
     msg: "Apps to deploy on {{ inventory_hostname }} (allowed_hosts verified): {{ deployable_apps | join(', ') }}"
 
+# =============================================================================
+# DEPLOY MODE: Deploy applications
+# =============================================================================
+
 - name: Create stacks directory
   ansible.builtin.file:
     path: "{{ homelab_stacks_path | default('/opt/stacks') }}"
     state: directory
     mode: '0755'
+  when: homelab_apps_mode == 'deploy'
 
 - name: Deploy applications
   ansible.builtin.include_tasks: deploy-app.yml
   loop: "{{ deployable_apps }}"
   loop_control:
     loop_var: app_name
+  when: homelab_apps_mode == 'deploy'
 
 # =============================================================================
-# Handle restore if enabled
+# DEPLOY MODE: Handle restore if enabled in manifest
 # =============================================================================
 
 - name: Check if restore is enabled for this host
   ansible.builtin.set_fact:
     restore_enabled: "{{ host_config.restore.enabled | default(false) }}"
     restore_order: "{{ host_config.restore.priority_order | default([]) }}"
+  when: homelab_apps_mode == 'deploy'
 
-- name: Run restore for apps
+- name: Run restore for apps (deploy mode)
   ansible.builtin.include_tasks: restore-app.yml
   loop: "{{ restore_order }}"
   loop_control:
     loop_var: app_name
   when:
+    - homelab_apps_mode == 'deploy'
     - restore_enabled | bool
     - app_name in deployable_apps
     - homelab_apps_restore | default(true) | bool
 
 # =============================================================================
-# Create management scripts
+# BACKUP MODE: Run backup.sh for resolved apps
+# =============================================================================
+
+- name: Check backup.sh exists
+  ansible.builtin.stat:
+    path: "{{ homelab_apps_path }}/scripts/backup.sh"
+  register: backup_script_stat
+  when: homelab_apps_mode == 'backup'
+
+- name: Fail if backup.sh not found
+  ansible.builtin.fail:
+    msg: "backup.sh not found at {{ homelab_apps_path }}/scripts/backup.sh. Deploy apps first."
+  when:
+    - homelab_apps_mode == 'backup'
+    - not (backup_script_stat.stat.exists | default(false))
+
+- name: Display apps to backup
+  ansible.builtin.debug:
+    msg: "Apps to backup on {{ inventory_hostname }}: {{ deployable_apps | join(', ') }}"
+  when: homelab_apps_mode == 'backup'
+
+- name: Run backup for each app
+  ansible.builtin.shell: |
+    {{ homelab_apps_path }}/scripts/backup.sh {{ item }}
+  loop: "{{ deployable_apps }}"
+  register: backup_results
+  failed_when: false
+  when: homelab_apps_mode == 'backup'
+
+- name: Display backup results
+  ansible.builtin.debug:
+    msg: "{{ '✓' if item.rc == 0 else '✗' }} {{ item.item }} (rc={{ item.rc }})"
+  loop: "{{ backup_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown') }}"
+  when:
+    - homelab_apps_mode == 'backup'
+    - backup_results.results is defined
+
+# =============================================================================
+# RESTORE MODE: Restore apps from B2/restic backup
+# =============================================================================
+
+- name: Source backup credentials from backup.env
+  ansible.builtin.shell: |
+    set -a
+    source /opt/scripts/backup.env 2>/dev/null || true
+    echo "B2_BUCKET=${B2_BUCKET:-}"
+    echo "B2_ACCOUNT_ID=${B2_ACCOUNT_ID:-}"
+    echo "B2_ACCOUNT_KEY=${B2_ACCOUNT_KEY:-}"
+    echo "RESTIC_PASSWORD=${RESTIC_PASSWORD:-}"
+  register: backup_env_output
+  changed_when: false
+  failed_when: false
+  when: homelab_apps_mode == 'restore'
+
+- name: Set backup credentials from env
+  ansible.builtin.set_fact:
+    backup_b2_bucket: "{{ (backup_env_output.stdout_lines | select('match', '^B2_BUCKET=') | first | default('B2_BUCKET=')).split('=', 1)[1] }}"
+    backup_b2_account_id: "{{ (backup_env_output.stdout_lines | select('match', '^B2_ACCOUNT_ID=') | first | default('B2_ACCOUNT_ID=')).split('=', 1)[1] }}"
+    backup_b2_account_key: "{{ (backup_env_output.stdout_lines | select('match', '^B2_ACCOUNT_KEY=') | first | default('B2_ACCOUNT_KEY=')).split('=', 1)[1] }}"
+    backup_restic_password: "{{ (backup_env_output.stdout_lines | select('match', '^RESTIC_PASSWORD=') | first | default('RESTIC_PASSWORD=')).split('=', 1)[1] }}"
+  when:
+    - homelab_apps_mode == 'restore'
+    - backup_env_output.stdout_lines is defined
+    - backup_b2_bucket is not defined or backup_restic_password is not defined
+  no_log: true
+
+- name: Fail if backup credentials missing
+  ansible.builtin.fail:
+    msg: "Backup credentials not available. Ensure /opt/scripts/backup.env exists on {{ inventory_hostname }}."
+  when:
+    - homelab_apps_mode == 'restore'
+    - (backup_restic_password is not defined or backup_restic_password | length == 0)
+
+- name: Display apps to restore
+  ansible.builtin.debug:
+    msg: "Apps to restore on {{ inventory_hostname }}: {{ deployable_apps | join(', ') }}{{ ' (force)' if force_restore | default(false) | bool else '' }}"
+  when: homelab_apps_mode == 'restore'
+
+- name: Run restore for apps (restore mode)
+  ansible.builtin.include_tasks: restore-app.yml
+  loop: "{{ deployable_apps }}"
+  loop_control:
+    loop_var: app_name
+  when: homelab_apps_mode == 'restore'
+
+# =============================================================================
+# DEPLOY MODE: Create management scripts
 # =============================================================================
 
 - name: Create deploy-apps script
@@ -213,15 +309,17 @@
     src: deploy-apps.sh.j2
     dest: /opt/scripts/deploy-apps.sh
     mode: '0755'
+  when: homelab_apps_mode == 'deploy'
 
 - name: Create app-status script
   ansible.builtin.template:
     src: app-status.sh.j2
     dest: /opt/scripts/app-status.sh
     mode: '0755'
+  when: homelab_apps_mode == 'deploy'
 
 # =============================================================================
-# Setup container audit (detect rogue/missing containers)
+# DEPLOY MODE: Setup container audit (detect rogue/missing containers)
 # =============================================================================
 
 - name: Create audit-containers script
@@ -229,6 +327,7 @@
     src: audit-containers.sh.j2
     dest: /opt/scripts/audit-containers.sh
     mode: '0755'
+  when: homelab_apps_mode == 'deploy'
 
 - name: Create audit-containers systemd service
   ansible.builtin.template:
@@ -236,6 +335,7 @@
     dest: /etc/systemd/system/audit-containers.service
     mode: '0644'
   notify: reload systemd
+  when: homelab_apps_mode == 'deploy'
 
 - name: Create audit-containers systemd timer
   ansible.builtin.template:
@@ -243,6 +343,7 @@
     dest: /etc/systemd/system/audit-containers.timer
     mode: '0644'
   notify: reload systemd
+  when: homelab_apps_mode == 'deploy'
 
 - name: Enable and start audit-containers timer
   ansible.builtin.systemd:
@@ -250,9 +351,10 @@
     state: started
     enabled: true
     daemon_reload: true
+  when: homelab_apps_mode == 'deploy'
 
 # =============================================================================
-# Setup secret refresh service
+# DEPLOY MODE: Setup secret refresh service
 # =============================================================================
 
 - name: Create refresh-secrets script
@@ -260,6 +362,7 @@
     src: refresh-secrets.sh.j2
     dest: /usr/local/bin/refresh-secrets.sh
     mode: '0755'
+  when: homelab_apps_mode == 'deploy'
 
 - name: Create refresh-secrets systemd service
   ansible.builtin.template:
@@ -267,6 +370,7 @@
     dest: /etc/systemd/system/refresh-secrets.service
     mode: '0644'
   notify: reload systemd
+  when: homelab_apps_mode == 'deploy'
 
 - name: Create refresh-secrets systemd timer
   ansible.builtin.template:
@@ -274,16 +378,19 @@
     dest: /etc/systemd/system/refresh-secrets.timer
     mode: '0644'
   notify: reload systemd
+  when: homelab_apps_mode == 'deploy'
 
 - name: Reload systemd daemon
   ansible.builtin.systemd:
     daemon_reload: true
+  when: homelab_apps_mode == 'deploy'
 
 - name: Enable and start refresh-secrets timer
   ansible.builtin.systemd:
     name: refresh-secrets.timer
     state: started
     enabled: true
+  when: homelab_apps_mode == 'deploy'
 
 - name: Display deployment summary
   ansible.builtin.debug:
@@ -294,7 +401,7 @@
       ════════════════════════════════════════════════════════════════
       
       Deployed apps: {{ deployable_apps | join(', ') }}
-      Restore enabled: {{ restore_enabled }}
+      Restore enabled: {{ restore_enabled | default(false) }}
       
       Management scripts:
         - /opt/scripts/deploy-apps.sh        # Redeploy all apps
@@ -311,3 +418,4 @@
         - refresh-secrets.sh [--force] [app-name]
       
       ════════════════════════════════════════════════════════════════
+  when: homelab_apps_mode == 'deploy'

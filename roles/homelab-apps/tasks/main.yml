@@ -1,0 +1,307 @@
+---
+# Homelab Apps Role - Manifest-Based Application Deployment
+# 
+# This role reads from the homelab-apps manifest.yml to determine which
+# applications to deploy on each host, then handles deployment and optional restore.
+#
+# Variables:
+#   - homelab_apps_repo: Git repo URL (default from manifest settings)
+#   - homelab_apps_branch: Git branch (default: main)
+#   - homelab_apps_path: Local path on host (default: /opt/apps)
+#   - homelab_apps_restore: Whether to restore from backup (default: from manifest)
+
+- name: Set default variables
+  ansible.builtin.set_fact:
+    homelab_apps_path: "{{ homelab_apps_path | default('/opt/apps') }}"
+    homelab_stacks_path: "{{ homelab_stacks_path | default('/opt/stacks') }}"
+    homelab_apps_branch: "{{ homelab_apps_branch | default('main') }}"
+
+# =============================================================================
+# Clone/Update the homelab-apps repository
+# =============================================================================
+
+- name: Ensure git is installed
+  ansible.builtin.apt:
+    name: git
+    state: present
+    update_cache: true
+
+- name: Mark homelab-apps directory as safe for git
+  ansible.builtin.command:
+    cmd: git config --global --add safe.directory {{ homelab_apps_path }}
+  changed_when: false
+
+- name: Clone homelab-apps repository
+  ansible.builtin.git:
+    repo: "{{ homelab_apps_repo | default('https://github.com/LuckyPrayer/homelab-apps.git') }}"
+    dest: "{{ homelab_apps_path }}"
+    version: "{{ homelab_apps_branch }}"
+    force: true
+  register: git_clone_result
+
+- name: Read manifest.yml
+  ansible.builtin.slurp:
+    src: "{{ homelab_apps_path }}/manifest.yml"
+  register: manifest_raw
+
+- name: Parse manifest
+  ansible.builtin.set_fact:
+    manifest: "{{ manifest_raw.content | b64decode | from_yaml }}"
+
+# =============================================================================
+# Resolve apps for this host
+# =============================================================================
+
+- name: Get host configuration from manifest
+  ansible.builtin.set_fact:
+    host_config: "{{ manifest.hosts[inventory_hostname] | default({}) }}"
+
+- name: Fail if host not in manifest
+  ansible.builtin.fail:
+    msg: "Host {{ inventory_hostname }} not found in manifest.yml"
+  when: host_config | length == 0
+
+- name: Resolve profile apps
+  ansible.builtin.set_fact:
+    profile_apps: >-
+      {{
+        host_config.profiles | default([])
+        | map('extract', manifest.profiles)
+        | map(attribute='apps', default=[])
+        | flatten
+        | unique
+        | list
+      }}
+
+- name: Combine profile apps with additional apps
+  ansible.builtin.set_fact:
+    all_apps: "{{ (profile_apps + (host_config.apps | default([]))) | unique | list }}"
+
+- name: Remove excluded apps
+  ansible.builtin.set_fact:
+    final_apps: "{{ all_apps | difference(host_config.exclude | default([])) | list }}"
+
+- name: Display apps to deploy
+  ansible.builtin.debug:
+    msg: "Apps to deploy on {{ inventory_hostname }}: {{ final_apps | join(', ') }}"
+
+# =============================================================================
+# Deploy each application
+# =============================================================================
+
+- name: Check which apps exist in repository
+  ansible.builtin.stat:
+    path: "{{ homelab_apps_path }}/{{ item }}/docker-compose.yml"
+  loop: "{{ final_apps }}"
+  register: app_exists_check
+
+- name: Build list of deployable apps
+  ansible.builtin.set_fact:
+    deployable_apps: >-
+      {{
+        app_exists_check.results
+        | selectattr('stat.exists', 'equalto', true)
+        | map(attribute='item')
+        | list
+      }}
+
+- name: Warn about missing apps
+  ansible.builtin.debug:
+    msg: "WARNING: App '{{ item }}' not found in repository, skipping"
+  loop: "{{ final_apps | difference(deployable_apps) }}"
+  when: final_apps | difference(deployable_apps) | length > 0
+
+# =============================================================================
+# Enforce allowed_hosts from each app's config.yml
+# =============================================================================
+
+- name: Read config.yml for each deployable app
+  ansible.builtin.slurp:
+    src: "{{ homelab_apps_path }}/{{ item }}/config.yml"
+  loop: "{{ deployable_apps }}"
+  register: app_configs_raw
+  failed_when: false
+
+- name: Parse app configs and check allowed_hosts
+  ansible.builtin.set_fact:
+    _app_configs: >-
+      {%- set result = {} -%}
+      {%- for item in app_configs_raw.results -%}
+        {%- if item.content is defined -%}
+          {%- set cfg = item.content | b64decode | from_yaml -%}
+          {%- set _ = result.update({item.item: cfg}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ result }}
+
+- name: Warn about manifest/allowed_hosts mismatches
+  ansible.builtin.debug:
+    msg: >-
+      ⚠ MISMATCH: App '{{ item }}' is assigned to {{ inventory_hostname }} in manifest.yml
+      but allowed_hosts in config.yml is {{ _app_configs[item].allowed_hosts }}.
+      Skipping deployment. Update allowed_hosts or manifest.yml to resolve.
+  loop: "{{ deployable_apps }}"
+  when:
+    - _app_configs[item] is defined
+    - _app_configs[item].allowed_hosts is defined
+    - _app_configs[item].allowed_hosts | length > 0
+    - inventory_hostname not in _app_configs[item].allowed_hosts
+
+- name: Filter apps by allowed_hosts
+  ansible.builtin.set_fact:
+    deployable_apps: >-
+      {%- set allowed = [] -%}
+      {%- for app in deployable_apps -%}
+        {%- if _app_configs[app] is defined
+            and _app_configs[app].allowed_hosts is defined
+            and _app_configs[app].allowed_hosts | length > 0
+            and inventory_hostname not in _app_configs[app].allowed_hosts -%}
+          {# skip - host not in allowed_hosts #}
+        {%- else -%}
+          {%- set _ = allowed.append(app) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ allowed }}
+
+- name: Display final deployable apps (after allowed_hosts filtering)
+  ansible.builtin.debug:
+    msg: "Apps to deploy on {{ inventory_hostname }} (allowed_hosts verified): {{ deployable_apps | join(', ') }}"
+
+- name: Create stacks directory
+  ansible.builtin.file:
+    path: "{{ homelab_stacks_path | default('/opt/stacks') }}"
+    state: directory
+    mode: '0755'
+
+- name: Deploy applications
+  ansible.builtin.include_tasks: deploy-app.yml
+  loop: "{{ deployable_apps }}"
+  loop_control:
+    loop_var: app_name
+
+# =============================================================================
+# Handle restore if enabled
+# =============================================================================
+
+- name: Check if restore is enabled for this host
+  ansible.builtin.set_fact:
+    restore_enabled: "{{ host_config.restore.enabled | default(false) }}"
+    restore_order: "{{ host_config.restore.priority_order | default([]) }}"
+
+- name: Run restore for apps
+  ansible.builtin.include_tasks: restore-app.yml
+  loop: "{{ restore_order }}"
+  loop_control:
+    loop_var: app_name
+  when:
+    - restore_enabled | bool
+    - app_name in deployable_apps
+    - homelab_apps_restore | default(true) | bool
+
+# =============================================================================
+# Create management scripts
+# =============================================================================
+
+- name: Create deploy-apps script
+  ansible.builtin.template:
+    src: deploy-apps.sh.j2
+    dest: /opt/scripts/deploy-apps.sh
+    mode: '0755'
+
+- name: Create app-status script
+  ansible.builtin.template:
+    src: app-status.sh.j2
+    dest: /opt/scripts/app-status.sh
+    mode: '0755'
+
+# =============================================================================
+# Setup container audit (detect rogue/missing containers)
+# =============================================================================
+
+- name: Create audit-containers script
+  ansible.builtin.template:
+    src: audit-containers.sh.j2
+    dest: /opt/scripts/audit-containers.sh
+    mode: '0755'
+
+- name: Create audit-containers systemd service
+  ansible.builtin.template:
+    src: audit-containers.service.j2
+    dest: /etc/systemd/system/audit-containers.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: Create audit-containers systemd timer
+  ansible.builtin.template:
+    src: audit-containers.timer.j2
+    dest: /etc/systemd/system/audit-containers.timer
+    mode: '0644'
+  notify: reload systemd
+
+- name: Enable and start audit-containers timer
+  ansible.builtin.systemd:
+    name: audit-containers.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# =============================================================================
+# Setup secret refresh service
+# =============================================================================
+
+- name: Create refresh-secrets script
+  ansible.builtin.template:
+    src: refresh-secrets.sh.j2
+    dest: /usr/local/bin/refresh-secrets.sh
+    mode: '0755'
+
+- name: Create refresh-secrets systemd service
+  ansible.builtin.template:
+    src: refresh-secrets.service.j2
+    dest: /etc/systemd/system/refresh-secrets.service
+    mode: '0644'
+  notify: reload systemd
+
+- name: Create refresh-secrets systemd timer
+  ansible.builtin.template:
+    src: refresh-secrets.timer.j2
+    dest: /etc/systemd/system/refresh-secrets.timer
+    mode: '0644'
+  notify: reload systemd
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start refresh-secrets timer
+  ansible.builtin.systemd:
+    name: refresh-secrets.timer
+    state: started
+    enabled: true
+
+- name: Display deployment summary
+  ansible.builtin.debug:
+    msg: |
+      
+      ════════════════════════════════════════════════════════════════
+      Homelab Apps Deployment Complete - {{ inventory_hostname }}
+      ════════════════════════════════════════════════════════════════
+      
+      Deployed apps: {{ deployable_apps | join(', ') }}
+      Restore enabled: {{ restore_enabled }}
+      
+      Management scripts:
+        - /opt/scripts/deploy-apps.sh        # Redeploy all apps
+        - /opt/scripts/app-status.sh         # Check app status
+        - /opt/scripts/audit-containers.sh   # Detect rogue/missing containers
+        - /usr/local/bin/refresh-secrets.sh  # Refresh secrets from Infisical
+      
+      Timers:
+        - audit-containers.timer   (every 15 min)
+        - refresh-secrets.timer    (hourly)
+      
+      Manual usage:
+        - audit-containers.sh [--json|--remove|--quiet]
+        - refresh-secrets.sh [--force] [app-name]
+      
+      ════════════════════════════════════════════════════════════════

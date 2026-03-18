@@ -1,0 +1,17 @@
+---
+# Homepage Config Role - Default Variables
+#
+# Controls which Homepage config templates are deployed.
+# Set homepage_config_type per-host in inventory:
+#   "applications" - Shows app services (n8n, mealie, vaultwarden, etc.)
+#   "infrastructure" - Shows infra services (harbor, traefik, komodo, monitoring, etc.)
+
+homepage_config_type: "applications"  # or "infrastructure"
+homepage_config_dir: "/opt/stacks/homepage/config"
+
+# Base domain for generating service URLs
+homepage_base_domain: "{{ base_domain | default('thebozic.com') }}"
+homepage_env: "{{ env | default('dev') }}"
+
+# Glances port for system resource widgets
+homepage_glances_port: 61208

@@ -1,0 +1,179 @@
+---
+# Restore a single application from backup
+# Called in a loop from main.yml with app_name variable
+
+- name: "{{ app_name }} - Read app config for restore"
+  ansible.builtin.slurp:
+    src: "{{ homelab_apps_path }}/{{ app_name }}/config.yml"
+  register: restore_app_config_raw
+  failed_when: false
+
+- name: "{{ app_name }} - Parse app config"
+  ansible.builtin.set_fact:
+    restore_app_config: "{{ restore_app_config_raw.content | b64decode | from_yaml if restore_app_config_raw.content is defined else {} }}"
+
+- name: "{{ app_name }} - Check allowed_hosts for restore"
+  ansible.builtin.set_fact:
+    _restore_host_allowed: >-
+      {{
+        restore_app_config.allowed_hosts is not defined
+        or restore_app_config.allowed_hosts | length == 0
+        or inventory_hostname in restore_app_config.allowed_hosts
+      }}
+
+- name: "{{ app_name }} - Skip restore (host not in allowed_hosts)"
+  ansible.builtin.debug:
+    msg: >-
+      ✗ Skipping restore for {{ app_name }}: {{ inventory_hostname }} is not in
+      allowed_hosts {{ restore_app_config.allowed_hosts | default([]) }}
+  when: not _restore_host_allowed | bool
+
+- name: "{{ app_name }} - Check if restore is enabled for app"
+  ansible.builtin.set_fact:
+    app_restore_enabled: "{{ (restore_app_config.restore.enabled | default(true)) and (_restore_host_allowed | bool) }}"
+
+- name: "{{ app_name }} - Skip restore if disabled"
+  ansible.builtin.debug:
+    msg: "Restore disabled for {{ app_name }}, skipping"
+  when: not app_restore_enabled | bool
+
+- name: "{{ app_name }} - Check for existing data"
+  ansible.builtin.stat:
+    path: "{{ homelab_apps_path }}/{{ app_name }}/data"
+  register: data_dir_stat
+  when: app_restore_enabled | bool
+
+- name: "{{ app_name }} - Check if data directory has content"
+  ansible.builtin.find:
+    paths: "{{ homelab_apps_path }}/{{ app_name }}/data"
+    file_type: any
+  register: data_dir_contents
+  when:
+    - app_restore_enabled | bool
+    - data_dir_stat.stat.exists | default(false)
+
+- name: "{{ app_name }} - Skip restore if data exists"
+  ansible.builtin.debug:
+    msg: "Data already exists for {{ app_name }}, skipping restore"
+  when:
+    - app_restore_enabled | bool
+    - data_dir_contents.matched | default(0) > 0
+
+- name: "{{ app_name }} - Run pre-restore hook"
+  ansible.builtin.shell: |
+    {{ restore_app_config.restore.pre_restore }}
+  args:
+    chdir: "{{ homelab_apps_path }}/{{ app_name }}"
+  when:
+    - app_restore_enabled | bool
+    - data_dir_contents.matched | default(0) == 0
+    - restore_app_config.restore.pre_restore is defined
+    - restore_app_config.restore.pre_restore is not none
+    - restore_app_config.restore.pre_restore | string | length > 0
+  register: pre_restore_result
+  failed_when: false
+
+- name: "{{ app_name }} - Stop container before restore"
+  ansible.builtin.shell: |
+    cd {{ homelab_apps_path }}/{{ app_name }}
+    docker compose down || true
+  when:
+    - app_restore_enabled | bool
+    - data_dir_contents.matched | default(0) == 0
+    - restore_app_config.backup.stop_during_backup | default(false) | bool
+
+- name: "{{ app_name }} - Execute restore from B2"
+  ansible.builtin.shell: |
+    # Set up restic environment
+    export RESTIC_REPOSITORY="b2:{{ backup_b2_bucket }}:{{ inventory_hostname }}"
+    export RESTIC_PASSWORD="{{ backup_restic_password }}"
+    export B2_ACCOUNT_ID="{{ backup_b2_account_id }}"
+    export B2_ACCOUNT_KEY="{{ backup_b2_account_key }}"
+    
+    # Find latest snapshot for this app (check both new and legacy paths)
+    SNAPSHOT=$(restic snapshots --json --path "/opt/apps/{{ app_name }}" 2>/dev/null | \
+               jq -r 'sort_by(.time) | last | .short_id // empty')
+    
+    if [ -z "$SNAPSHOT" ]; then
+      # Try legacy path (old /opt/stacks location)
+      SNAPSHOT=$(restic snapshots --json --path "/opt/stacks/{{ app_name }}" 2>/dev/null | \
+                 jq -r 'sort_by(.time) | last | .short_id // empty')
+    fi
+    
+    if [ -z "$SNAPSHOT" ]; then
+      # Try legacy path (old /opt/homelab-apps location)
+      SNAPSHOT=$(restic snapshots --json --path "/opt/homelab-apps/{{ app_name }}" 2>/dev/null | \
+                 jq -r 'sort_by(.time) | last | .short_id // empty')
+    fi
+    
+    if [ -z "$SNAPSHOT" ]; then
+      echo "No snapshot found for {{ app_name }}"
+      exit 0  # Not an error - just no backup to restore
+    fi
+    
+    echo "Restoring {{ app_name }} from snapshot $SNAPSHOT"
+    
+    # Restore to temporary location
+    RESTORE_TMP="/tmp/restore-{{ app_name }}-$$"
+    mkdir -p "$RESTORE_TMP"
+    
+    restic restore "$SNAPSHOT" --target "$RESTORE_TMP" \
+      --include "/opt/apps/{{ app_name }}/data" \
+      --include "/opt/stacks/{{ app_name }}/data" \
+      --include "/opt/homelab-apps/{{ app_name }}/data"
+    
+    # Move restored data to correct location (check all possible source paths)
+    if [ -d "$RESTORE_TMP/opt/apps/{{ app_name }}/data" ]; then
+      cp -a "$RESTORE_TMP/opt/apps/{{ app_name }}/data/"* "{{ homelab_apps_path }}/{{ app_name }}/data/" 2>/dev/null || true
+    elif [ -d "$RESTORE_TMP/opt/stacks/{{ app_name }}/data" ]; then
+      cp -a "$RESTORE_TMP/opt/stacks/{{ app_name }}/data/"* "{{ homelab_apps_path }}/{{ app_name }}/data/" 2>/dev/null || true
+    elif [ -d "$RESTORE_TMP/opt/homelab-apps/{{ app_name }}/data" ]; then
+      cp -a "$RESTORE_TMP/opt/homelab-apps/{{ app_name }}/data/"* "{{ homelab_apps_path }}/{{ app_name }}/data/" 2>/dev/null || true
+    fi
+    
+    # Cleanup
+    rm -rf "$RESTORE_TMP"
+    
+    echo "Restore complete for {{ app_name }}"
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+  when:
+    - app_restore_enabled | bool
+    - data_dir_contents.matched | default(0) == 0
+    - backup_restic_password is defined
+    - backup_b2_bucket is defined
+  register: restore_result
+  changed_when: "'Restoring' in restore_result.stdout"
+  failed_when: false
+
+- name: "{{ app_name }} - Run post-restore hook"
+  ansible.builtin.shell: |
+    {{ restore_app_config.restore.post_restore }}
+  args:
+    chdir: "{{ homelab_apps_path }}/{{ app_name }}"
+  when:
+    - app_restore_enabled | bool
+    - data_dir_contents.matched | default(0) == 0
+    - restore_result is changed
+    - restore_app_config.restore.post_restore is defined
+    - restore_app_config.restore.post_restore is not none
+    - restore_app_config.restore.post_restore | string | length > 0
+  register: post_restore_result
+  failed_when: false
+
+- name: "{{ app_name }} - Restart container after restore"
+  ansible.builtin.shell: |
+    cd {{ homelab_apps_path }}/{{ app_name }}
+    docker compose up -d
+  environment:
+    ENV: "{{ env | default('dev') }}"
+    BASE_DOMAIN: "{{ base_domain | default('thebozic.com') }}"
+    TZ: "{{ manifest.settings.defaults.TZ | default('America/Toronto') }}"
+  when:
+    - app_restore_enabled | bool
+    - restore_result is changed
+
+- name: "{{ app_name }} - Restore status"
+  ansible.builtin.debug:
+    msg: "{{ '✓ Restored' if restore_result is changed else '○ Skipped (no backup or data exists)' }} {{ app_name }}"
+  when: app_restore_enabled | bool

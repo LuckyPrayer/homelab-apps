@@ -1,0 +1,54 @@
+---
+# Deploy Homelab Apps via Semaphore
+#
+# This playbook is designed to be executed by Semaphore to deploy
+# application services on target hosts. Semaphore provides the
+# inventory and SSH credentials.
+#
+# Usage in Semaphore:
+#   - Template: "Deploy Apps - All Hosts"
+#   - Playbook: playbooks/deploy-apps.yml
+#   - Arguments: ["--limit", "orion-dev"]
+#
+# Prerequisites:
+#   - Semaphore SSH key configured for target host access
+#   - Inventory file configured in Semaphore project
+#   - Infisical CLI installed on target hosts (via homelab infra playbooks)
+
+- name: Deploy Homelab Apps
+  hosts: app_hosts
+  become: true
+  tags:
+    - apps
+    - homelab-apps
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Homelab App Deployment                       ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - network
+          - min
+
+  roles:
+    - role: homelab-apps
+      tags: [apps, homelab-apps]
+    - role: homepage-config
+      tags: [apps, homepage, homepage-config]
+
+  post_tasks:
+    - name: Deployment complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Homelab apps deployed to {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"
+          - "  Host: {{ ansible_host }}"

@@ -1,0 +1,83 @@
+---
+# Homepage Config Role - Deploy Homepage configuration files
+#
+# Templates services.yaml, settings.yaml, bookmarks.yaml, and widgets.yaml
+# based on homepage_config_type (applications or infrastructure).
+#
+# The homepage container is deployed by the homelab-apps pipeline.
+# This role only manages the config files that control what appears on the dashboard.
+
+- name: Check if homepage is deployed
+  ansible.builtin.stat:
+    path: "{{ homepage_config_dir }}"
+  register: homepage_config_stat
+
+- name: Skip if homepage is not deployed
+  ansible.builtin.debug:
+    msg: "Homepage config directory not found at {{ homepage_config_dir }}, skipping config deployment"
+  when: not homepage_config_stat.stat.exists | default(false)
+
+- name: Deploy Homepage configuration files
+  when: homepage_config_stat.stat.exists | default(false)
+  block:
+    - name: Display configuration type
+      ansible.builtin.debug:
+        msg: "Deploying Homepage config type '{{ homepage_config_type }}' to {{ inventory_hostname }}"
+
+    - name: Template settings.yaml
+      ansible.builtin.template:
+        src: settings.yaml.j2
+        dest: "{{ homepage_config_dir }}/settings.yaml"
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+
+    - name: Template services.yaml
+      ansible.builtin.template:
+        src: "services-{{ homepage_config_type }}.yaml.j2"
+        dest: "{{ homepage_config_dir }}/services.yaml"
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+
+    - name: Template bookmarks.yaml
+      ansible.builtin.template:
+        src: "bookmarks-{{ homepage_config_type }}.yaml.j2"
+        dest: "{{ homepage_config_dir }}/bookmarks.yaml"
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+
+    - name: Template widgets.yaml
+      ansible.builtin.template:
+        src: widgets.yaml.j2
+        dest: "{{ homepage_config_dir }}/widgets.yaml"
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+
+    - name: Template docker.yaml
+      ansible.builtin.template:
+        src: docker.yaml.j2
+        dest: "{{ homepage_config_dir }}/docker.yaml"
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+
+    - name: Ensure custom.css exists
+      ansible.builtin.copy:
+        dest: "{{ homepage_config_dir }}/custom.css"
+        content: ""
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+        force: false
+
+    - name: Ensure custom.js exists
+      ansible.builtin.copy:
+        dest: "{{ homepage_config_dir }}/custom.js"
+        content: ""
+        mode: '0644'
+        owner: "1000"
+        group: "1000"
+        force: false

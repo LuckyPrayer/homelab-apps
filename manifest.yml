@@ -65,7 +65,6 @@ hosts:
   # Development Environment
   # ---------------------------------------------------------------------------
   orion-dev:
-    env: dev
     profiles:
       - core
       - productivity
@@ -85,44 +84,17 @@ hosts:
         - stardew-server
   
   hephaestus-dev:
-    env: dev
     profiles:
       - core
-    apps:
-      - harbor         # Container registry
-      - docs-server
-    exclude: []
-    restore:
-      enabled: true
-      priority_order:
-        - harbor
-  
-  argus-dev:
-    env: dev
-    profiles:
-      - monitoring
-    apps:
-      - komodo-core
-    exclude: []
-    restore:
-      enabled: false   # Monitoring data is ephemeral
-
-  # ---------------------------------------------------------------------------
-  # AWS Cloud Hosts (Development)
-  # ---------------------------------------------------------------------------
-  pharos-dev:
-    env: dev
-    profiles: []           # uptime-kuma managed by Ansible role, not homelab-apps
     apps: []
     exclude: []
     restore:
-      enabled: false       # Backups handled by Ansible/Backrest, not homelab-apps
-
+      enabled: false
+  
   # ---------------------------------------------------------------------------
   # Production Environment
   # ---------------------------------------------------------------------------
   orion-prod:
-    env: prod
     profiles:
       - core
       - productivity
@@ -140,39 +112,25 @@ hosts:
         - minecraft-mh
   
   hephaestus-prod:
-    env: prod
     profiles:
       - core
       - media
-    apps:
-      - harbor
+    apps: []
     exclude: []
     restore:
       enabled: true
       priority_order:
-        - harbor
         - jellyfin
         - audiobookshelf
-
-  # ---------------------------------------------------------------------------
-  # AWS Cloud Hosts (Production)
-  # ---------------------------------------------------------------------------
-  pharos-prod:
-    env: prod
-    profiles: []           # uptime-kuma managed by Ansible role, not homelab-apps
-    apps: []
-    exclude: []
-    restore:
-      enabled: false       # Backups handled by Ansible/Backrest, not homelab-apps
 
 # =============================================================================
 # GLOBAL SETTINGS
 # =============================================================================
 settings:
   # Default environment variables for all apps
+  # NOTE: env and base_domain come from the Ansible inventory, not here
   defaults:
     TZ: America/Toronto
-    BASE_DOMAIN: thebozic.com
   
   # Git repository settings
   repo:

@@ -1,0 +1,26 @@
+[Unit]
+Description=Audit Homelab Containers Against Manifest
+Documentation=https://github.com/LuckyPrayer/homelab-apps
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/scripts/audit-containers.sh --quiet
+User=root
+Group=root
+
+# Environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=audit-containers
+
+# Don't fail the service on exit code 2 (issues detected — expected behavior)
+SuccessExitStatus=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,185 @@
+---
+# Deploy a single application from homelab-apps repository
+# Called in a loop from main.yml with app_name variable
+
+- name: "{{ app_name }} - Read app config"
+  ansible.builtin.slurp:
+    src: "{{ homelab_apps_path }}/{{ app_name }}/config.yml"
+  register: app_config_raw
+  failed_when: false
+
+- name: "{{ app_name }} - Parse app config"
+  ansible.builtin.set_fact:
+    app_config: "{{ app_config_raw.content | b64decode | from_yaml if app_config_raw.content is defined else {} }}"
+
+- name: "{{ app_name }} - Check allowed_hosts"
+  ansible.builtin.set_fact:
+    _app_host_allowed: >-
+      {{
+        app_config.allowed_hosts is not defined
+        or app_config.allowed_hosts | length == 0
+        or inventory_hostname in app_config.allowed_hosts
+      }}
+
+- name: "{{ app_name }} - Skip deployment (host not in allowed_hosts)"
+  ansible.builtin.debug:
+    msg: >-
+      ✗ Skipping {{ app_name }}: {{ inventory_hostname }} is not in
+      allowed_hosts {{ app_config.allowed_hosts | default([]) }}
+  when: not _app_host_allowed | bool
+
+- name: "{{ app_name }} - Deploy app"
+  when: _app_host_allowed | bool
+  block:
+    - name: "{{ app_name }} - Check if {{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }} exists"
+      ansible.builtin.stat:
+        path: "{{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }}"
+      register: stacks_path_stat
+
+    - name: "{{ app_name }} - Handle existing directory (migrate data)"
+      when:
+        - stacks_path_stat.stat.exists | default(false)
+        - stacks_path_stat.stat.isdir | default(false)
+        - not (stacks_path_stat.stat.islnk | default(false))
+      block:
+        - name: "{{ app_name }} - Copy existing data to homelab-apps location"
+          ansible.builtin.shell: |
+            if [ -d "{{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }}/data" ]; then
+              mkdir -p "{{ homelab_apps_path }}/{{ app_name }}/data"
+              cp -an "{{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }}/data/"* "{{ homelab_apps_path }}/{{ app_name }}/data/" 2>/dev/null || true
+            fi
+          changed_when: false
+
+        - name: "{{ app_name }} - Remove existing directory to allow symlink"
+          ansible.builtin.file:
+            path: "{{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }}"
+            state: absent
+
+    - name: "{{ app_name }} - Create symlink in {{ homelab_stacks_path | default('/opt/stacks') }}"
+      ansible.builtin.file:
+        src: "{{ homelab_apps_path }}/{{ app_name }}"
+        dest: "{{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }}"
+        state: link
+        force: true
+
+    - name: "{{ app_name }} - Ensure data directory exists"
+      ansible.builtin.file:
+        path: "{{ homelab_apps_path }}/{{ app_name }}/data"
+        state: directory
+        mode: '0755'
+        owner: "{{ app_config.data_owner.uid | default(docker_user) | default('root') }}"
+        group: "{{ app_config.data_owner.gid | default(docker_group) | default('docker') }}"
+
+    - name: "{{ app_name }} - Set recursive ownership on data directory"
+      ansible.builtin.file:
+        path: "{{ homelab_apps_path }}/{{ app_name }}/data"
+        state: directory
+        recurse: true
+        owner: "{{ app_config.data_owner.uid | default(docker_user) | default('root') }}"
+        group: "{{ app_config.data_owner.gid | default(docker_group) | default('docker') }}"
+      when: app_config.data_owner is defined
+
+    - name: "{{ app_name }} - Build Infisical secret paths"
+      ansible.builtin.set_fact:
+        app_infisical_path: "{{ app_config.secrets.infisical_path | default('') }}"
+        app_has_secrets: >-
+          {{
+            app_config.secrets is defined and
+            app_config.secrets.infisical_path is defined and
+            app_config.secrets.infisical_path is not none and
+            (app_config.secrets.infisical_path | string | length > 0)
+          }}
+
+    # =========================================================================
+    # Export secrets from Infisical to .env file (if app has secrets configured)
+    # =========================================================================
+    - name: "{{ app_name }} - Export secrets from Infisical to .env file"
+      ansible.builtin.shell: |
+        # Export secrets from Infisical to dotenv format
+        infisical export \
+          --path="{{ app_infisical_path }}" \
+          --env="{{ env | default('dev') }}" \
+          --format=dotenv \
+          --projectId="${INFISICAL_PROJECT_ID}" \
+          --token="${INFISICAL_TOKEN}" \
+          > "{{ homelab_apps_path }}/{{ app_name }}/.env.secrets"
+
+        # Check if export was successful
+        if [[ ! -s "{{ homelab_apps_path }}/{{ app_name }}/.env.secrets" ]]; then
+          echo "WARNING: No secrets exported for {{ app_name }}"
+        fi
+      environment:
+        INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+        INFISICAL_PROJECT_ID: "{{ lookup('env', 'INFISICAL_PROJECT_ID') }}"
+      when: app_has_secrets | default(false) | bool
+      register: secret_export
+      changed_when: secret_export.rc == 0
+
+    - name: "{{ app_name }} - Create base .env file"
+      ansible.builtin.copy:
+        dest: "{{ homelab_apps_path }}/{{ app_name }}/.env.base"
+        content: |
+          # Base environment for {{ app_name }}
+          # Auto-generated by homelab-apps Ansible role
+          ENV={{ env | default('dev') }}
+          BASE_DOMAIN={{ base_domain | default('thebozic.com') }}
+          TZ={{ manifest.settings.defaults.TZ | default('America/Toronto') }}
+        mode: '0600'
+
+    - name: "{{ app_name }} - Merge base config and secrets into .env"
+      ansible.builtin.shell: |
+        set -e
+        # Start with base config
+        cat "{{ homelab_apps_path }}/{{ app_name }}/.env.base" > "{{ homelab_apps_path }}/{{ app_name }}/.env"
+
+        # Append secrets if they exist (secrets override base config)
+        if [[ -f "{{ homelab_apps_path }}/{{ app_name }}/.env.secrets" && -s "{{ homelab_apps_path }}/{{ app_name }}/.env.secrets" ]]; then
+          echo "" >> "{{ homelab_apps_path }}/{{ app_name }}/.env"
+          echo "# Secrets from Infisical ({{ app_infisical_path | default('') }})" >> "{{ homelab_apps_path }}/{{ app_name }}/.env"
+          cat "{{ homelab_apps_path }}/{{ app_name }}/.env.secrets" >> "{{ homelab_apps_path }}/{{ app_name }}/.env"
+        fi
+
+        # Secure permissions
+        chmod 600 "{{ homelab_apps_path }}/{{ app_name }}/.env"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: "{{ app_name }} - Store secret metadata for refresh service"
+      ansible.builtin.copy:
+        dest: "{{ homelab_apps_path }}/{{ app_name }}/.infisical-config"
+        content: |
+          INFISICAL_PATH={{ app_infisical_path }}
+          INFISICAL_ENV={{ env | default('dev') }}
+          APP_NAME={{ app_name }}
+        mode: '0600'
+      when: app_has_secrets | bool
+
+    # =========================================================================
+    # Deploy the container
+    # =========================================================================
+    - name: "{{ app_name }} - Deploy container"
+      ansible.builtin.shell: |
+        cd {{ homelab_apps_path }}/{{ app_name }}
+        docker compose up -d --remove-orphans
+      register: deploy_result
+      changed_when: "'Created' in deploy_result.stderr or 'Started' in deploy_result.stderr"
+
+    - name: "{{ app_name }} - Wait for container to be healthy"
+      ansible.builtin.shell: |
+        for i in {1..30}; do
+          if docker ps --filter "name={{ app_name }}" --filter "status=running" | grep -q {{ app_name }}; then
+            echo "Container {{ app_name }} is running"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Timeout waiting for {{ app_name }}"
+        exit 1
+      register: health_check
+      changed_when: false
+      failed_when: health_check.rc != 0
+
+    - name: "{{ app_name }} - Deployment complete"
+      ansible.builtin.debug:
+        msg: "✓ {{ app_name }} deployed successfully"

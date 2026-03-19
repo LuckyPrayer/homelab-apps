@@ -1,0 +1,49 @@
+---
+# Container Status Report via Semaphore
+#
+# This playbook runs app-status.sh on target hosts to display the current
+# status, health, and uptime of all deployed application containers.
+#
+# Usage in Semaphore:
+#   - Template: "Container Status - All Hosts"
+#   - Playbook: playbooks/report-status.yml
+#   - Arguments: ["--limit", "orion-dev"]
+#
+# Prerequisites:
+#   - Apps deployed (app-status.sh must exist on host)
+
+- name: Container Status Report
+  hosts: app_hosts
+  become: true
+  tags:
+    - report
+    - status
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Container Status Report                      ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: homelab-apps
+      vars:
+        homelab_apps_mode: report
+        report_type: status
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Container status report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"

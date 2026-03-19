@@ -293,6 +293,175 @@
     - restore_results.results is defined
 
 # =============================================================================
+# REPORT MODE: Generate reports on container and backup status
+# =============================================================================
+
+# --- Container Status Report ---
+- name: Check app-status.sh exists
+  ansible.builtin.stat:
+    path: /opt/scripts/app-status.sh
+  register: status_script_stat
+  when: homelab_apps_mode == 'report'
+
+- name: Run container status report
+  ansible.builtin.shell: /opt/scripts/app-status.sh
+  register: status_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - status_script_stat.stat.exists | default(false)
+
+- name: Display container status report
+  ansible.builtin.debug:
+    msg: "{{ status_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - status_report.stdout is defined
+    - status_report.stdout | length > 0
+
+- name: Warn if app-status.sh not found
+  ansible.builtin.debug:
+    msg: "⚠ app-status.sh not found on {{ inventory_hostname }}. Run deploy first."
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - not (status_script_stat.stat.exists | default(false))
+
+# --- Backup Report ---
+- name: Check restore.sh exists (for backup report)
+  ansible.builtin.stat:
+    path: "{{ homelab_apps_path }}/scripts/restore.sh"
+  register: report_restore_stat
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+
+- name: Run backup snapshot report
+  ansible.builtin.shell: |
+    {{ homelab_apps_path }}/scripts/restore.sh list
+  register: backup_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - report_restore_stat.stat.exists | default(false)
+
+- name: Display backup snapshot report
+  ansible.builtin.debug:
+    msg: "{{ backup_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - backup_report.stdout is defined
+    - backup_report.stdout | length > 0
+
+- name: Check per-app backup freshness
+  ansible.builtin.shell: |
+    . /opt/scripts/backup.env 2>/dev/null || true
+    export RESTIC_REPOSITORY="b2:${B2_BUCKET}:$(hostname)"
+    export AWS_ACCESS_KEY_ID="${B2_ACCOUNT_ID}"
+    export AWS_SECRET_ACCESS_KEY="${B2_ACCOUNT_KEY}"
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
+    echo "  Backup Freshness Report - $(hostname)"
+    echo "════════════════════════════════════════════════════════════════"
+    echo ""
+    printf "%-20s %-12s %-20s %s\n" "APP" "STATUS" "LAST BACKUP" "AGE"
+    printf "%-20s %-12s %-20s %s\n" "---" "------" "-----------" "---"
+    NOW=$(date +%s)
+    for app in {{ deployable_apps | join(' ') }}; do
+      SNAP_TIME=$(restic snapshots --host "$(hostname)" --path "/opt/backups/$app" --json 2>/dev/null | \
+                  jq -r 'sort_by(.time) | last | .time // empty' 2>/dev/null)
+      if [ -n "$SNAP_TIME" ]; then
+        SNAP_EPOCH=$(date -d "$SNAP_TIME" +%s 2>/dev/null || echo 0)
+        AGE_SECS=$((NOW - SNAP_EPOCH))
+        AGE_HOURS=$((AGE_SECS / 3600))
+        SNAP_SHORT=$(echo "$SNAP_TIME" | cut -dT -f1)
+        if [ $AGE_HOURS -lt 25 ]; then
+          STATUS="✓ fresh"
+        elif [ $AGE_HOURS -lt 73 ]; then
+          STATUS="⚠ aging"
+        else
+          STATUS="✗ stale"
+        fi
+        if [ $AGE_HOURS -lt 24 ]; then
+          AGE_FMT="${AGE_HOURS}h"
+        else
+          AGE_FMT="$((AGE_HOURS / 24))d"
+        fi
+        printf "%-20s %-12s %-20s %s\n" "$app" "$STATUS" "$SNAP_SHORT" "$AGE_FMT"
+      else
+        printf "%-20s %-12s %-20s %s\n" "$app" "✗ none" "-" "-"
+      fi
+    done
+    echo ""
+    echo "════════════════════════════════════════════════════════════════"
+  register: freshness_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - report_restore_stat.stat.exists | default(false)
+
+- name: Display backup freshness report
+  ansible.builtin.debug:
+    msg: "{{ freshness_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - freshness_report.stdout is defined
+    - freshness_report.stdout | length > 0
+
+- name: Warn if restore.sh not found (for backup report)
+  ansible.builtin.debug:
+    msg: "⚠ restore.sh not found on {{ inventory_hostname }}. Deploy apps first."
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - not (report_restore_stat.stat.exists | default(false))
+
+# --- Container Audit Report ---
+- name: Check audit-containers.sh exists
+  ansible.builtin.stat:
+    path: /opt/scripts/audit-containers.sh
+  register: audit_script_stat
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+
+- name: Run container audit report
+  ansible.builtin.shell: /opt/scripts/audit-containers.sh
+  register: audit_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - audit_script_stat.stat.exists | default(false)
+
+- name: Display container audit report
+  ansible.builtin.debug:
+    msg: "{{ audit_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - audit_report.stdout is defined
+    - audit_report.stdout | length > 0
+
+- name: Warn if audit-containers.sh not found
+  ansible.builtin.debug:
+    msg: "⚠ audit-containers.sh not found on {{ inventory_hostname }}. Run deploy first."
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - not (audit_script_stat.stat.exists | default(false))
+
+# =============================================================================
 # DEPLOY MODE: Create management scripts
 # =============================================================================
 

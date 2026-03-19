@@ -1,0 +1,49 @@
+---
+# Container Audit Report via Semaphore
+#
+# This playbook runs audit-containers.sh on target hosts to detect rogue
+# (unexpected) or missing (expected but not running) containers.
+#
+# Usage in Semaphore:
+#   - Template: "Container Audit - All Hosts"
+#   - Playbook: playbooks/report-audit.yml
+#   - Arguments: ["--limit", "orion-dev"]
+#
+# Prerequisites:
+#   - Apps deployed (audit-containers.sh must exist on host)
+
+- name: Container Audit Report
+  hosts: app_hosts
+  become: true
+  tags:
+    - report
+    - audit
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Container Audit Report                       ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: homelab-apps
+      vars:
+        homelab_apps_mode: report
+        report_type: audit
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Container audit report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"

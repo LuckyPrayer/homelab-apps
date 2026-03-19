@@ -1,0 +1,50 @@
+---
+# Backup Report via Semaphore
+#
+# This playbook queries Restic/B2 for available backup snapshots per host,
+# showing the latest snapshot time, age, and freshness status for each app.
+#
+# Usage in Semaphore:
+#   - Template: "Backup Report - All Hosts"
+#   - Playbook: playbooks/report-backups.yml
+#   - Arguments: ["--limit", "orion-dev"]
+#
+# Prerequisites:
+#   - Apps deployed (restore.sh and backup.env must exist on host)
+#   - Restic + B2 credentials configured via /opt/scripts/backup.env
+
+- name: Backup Report
+  hosts: app_hosts
+  become: true
+  tags:
+    - report
+    - backups
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Backup Report                                ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: homelab-apps
+      vars:
+        homelab_apps_mode: report
+        report_type: backups
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Backup report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"

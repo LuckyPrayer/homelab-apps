@@ -258,8 +258,7 @@
 
 - name: Source backup credentials from backup.env
   ansible.builtin.shell: |
-    set -a
-    source /opt/scripts/backup.env 2>/dev/null || true
+    . /opt/scripts/backup.env 2>/dev/null || true
     echo "B2_BUCKET=${B2_BUCKET:-}"
     echo "B2_ACCOUNT_ID=${B2_ACCOUNT_ID:-}"
     echo "B2_ACCOUNT_KEY=${B2_ACCOUNT_KEY:-}"

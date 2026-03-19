@@ -296,6 +296,42 @@
 # REPORT MODE: Generate reports on container and backup status
 # =============================================================================
 
+# --- Fetch Discord Webhook URL from Infisical ---
+- name: Fetch Discord webhook URL from Infisical
+  ansible.builtin.shell: |
+    infisical secrets get DISCORD_WEBHOOK_URL \
+      --path=/services/semaphore \
+      --env={{ env }} \
+      --projectId={{ lookup('env', 'INFISICAL_PROJECT_ID') }} \
+      --plain --silent
+  environment:
+    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  register: _discord_webhook_result
+  changed_when: false
+  no_log: true
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  run_once: true
+  when: homelab_apps_mode == 'report'
+
+- name: Set Discord webhook fact
+  ansible.builtin.set_fact:
+    _report_discord_webhook: "{{ _discord_webhook_result.stdout | default('') }}"
+  no_log: true
+  run_once: true
+  when:
+    - homelab_apps_mode == 'report'
+    - _discord_webhook_result is defined
+
+- name: Warn if Discord webhook not available
+  ansible.builtin.debug:
+    msg: "⚠ DISCORD_WEBHOOK_URL not found in Infisical at /services/semaphore. Reports will display but not send to Discord."
+  run_once: true
+  when:
+    - homelab_apps_mode == 'report'
+    - (_report_discord_webhook | default('')) | length == 0
+
 # --- Container Status Report ---
 - name: Check app-status.sh exists
   ansible.builtin.stat:
@@ -329,6 +365,61 @@
     - homelab_apps_mode == 'report'
     - report_type | default('status') in ['status', 'all']
     - not (status_script_stat.stat.exists | default(false))
+
+- name: Collect container status JSON for Discord
+  ansible.builtin.shell: /opt/scripts/app-status.sh --json
+  register: status_json
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - status_script_stat.stat.exists | default(false)
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Build container status Discord embed
+  ansible.builtin.set_fact:
+    _status_embed: |
+      {% set data = status_json.stdout | from_json %}
+      {% set total = data.apps | length %}
+      {% set running = data.apps | selectattr('status', 'equalto', 'running') | list | length %}
+      {% set healthy = data.apps | selectattr('health', 'equalto', 'healthy') | list | length %}
+      {% set all_ok = (running == total) %}
+      {
+        "embeds": [{
+          "title": "📊 Container Status Report",
+          "description": "{% for app in data.apps %}{{ '✅' if app.status == 'running' else '❌' }} **{{ app.name }}** — {{ app.status }}{% if app.health != 'N/A' %} ({{ app.health }}){% endif %}{% if app.started is defined and app.started != 'N/A' %} · up {{ app.started }}{% endif %}\n{% endfor %}",
+          "color": {{ 3066993 if all_ok else 15158332 }},
+          "fields": [
+            {"name": "Host", "value": "{{ data.host }}", "inline": true},
+            {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+            {"name": "Summary", "value": "{{ running }}/{{ total }} running · {{ healthy }} healthy", "inline": true}
+          ],
+          "timestamp": "{{ data.timestamp }}"
+        }]
+      }
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - status_json is defined
+    - status_json.rc | default(1) == 0
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Send container status report to Discord
+  ansible.builtin.uri:
+    url: "{{ _report_discord_webhook }}"
+    method: POST
+    body_format: json
+    body: "{{ _status_embed | from_yaml }}"
+    status_code: [200, 204]
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - _status_embed is defined
+    - (_report_discord_webhook | default('')) | length > 0
 
 # --- Backup Report ---
 - name: Check restore.sh exists (for backup report)
@@ -425,6 +516,94 @@
     - report_type | default('status') in ['backups', 'all']
     - not (report_restore_stat.stat.exists | default(false))
 
+- name: Collect backup freshness JSON for Discord
+  ansible.builtin.shell: |
+    . /opt/scripts/backup.env 2>/dev/null || true
+    export RESTIC_REPOSITORY="b2:${B2_BUCKET}:$(hostname)"
+    export AWS_ACCESS_KEY_ID="${B2_ACCOUNT_ID}"
+    export AWS_SECRET_ACCESS_KEY="${B2_ACCOUNT_KEY}"
+    NOW=$(date +%s)
+    echo "{"
+    echo "  \"host\": \"$(hostname)\","
+    echo "  \"env\": \"{{ env }}\","
+    echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+    echo "  \"apps\": ["
+    FIRST=true
+    for app in {{ deployable_apps | join(' ') }}; do
+      SNAP_TIME=$(restic snapshots --host "$(hostname)" --path "/opt/backups/$app" --json 2>/dev/null | \
+                  jq -r 'sort_by(.time) | last | .time // empty' 2>/dev/null)
+      $FIRST || echo ","
+      FIRST=false
+      if [ -n "$SNAP_TIME" ]; then
+        SNAP_EPOCH=$(date -d "$SNAP_TIME" +%s 2>/dev/null || echo 0)
+        AGE_HOURS=$(( (NOW - SNAP_EPOCH) / 3600 ))
+        if [ $AGE_HOURS -lt 25 ]; then STATUS="fresh"
+        elif [ $AGE_HOURS -lt 73 ]; then STATUS="aging"
+        else STATUS="stale"; fi
+        if [ $AGE_HOURS -lt 24 ]; then AGE="${AGE_HOURS}h"
+        else AGE="$((AGE_HOURS / 24))d"; fi
+        SNAP_SHORT=$(echo "$SNAP_TIME" | cut -dT -f1)
+        echo "    {\"name\": \"$app\", \"status\": \"$STATUS\", \"last_backup\": \"$SNAP_SHORT\", \"age\": \"$AGE\"}"
+      else
+        echo "    {\"name\": \"$app\", \"status\": \"none\", \"last_backup\": null, \"age\": null}"
+      fi
+    done
+    echo "  ]"
+    echo "}"
+  register: freshness_json
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - report_restore_stat.stat.exists | default(false)
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Build backup freshness Discord embed
+  ansible.builtin.set_fact:
+    _backup_embed: |
+      {% set data = freshness_json.stdout | from_json %}
+      {% set fresh = data.apps | selectattr('status', 'equalto', 'fresh') | list | length %}
+      {% set stale = data.apps | selectattr('status', 'equalto', 'stale') | list | length %}
+      {% set none_count = data.apps | selectattr('status', 'equalto', 'none') | list | length %}
+      {% set total = data.apps | length %}
+      {% set all_ok = (fresh == total) %}
+      {
+        "embeds": [{
+          "title": "🗄️ Backup Freshness Report",
+          "description": "{% for app in data.apps %}{% if app.status == 'fresh' %}✅{% elif app.status == 'aging' %}⚠️{% elif app.status == 'none' %}🚫{% else %}❌{% endif %} **{{ app.name }}** — {% if app.last_backup %}{{ app.last_backup }} ({{ app.age }}){% else %}no backups found{% endif %}\n{% endfor %}",
+          "color": {{ 3066993 if all_ok else (15105570 if stale == 0 else 15158332) }},
+          "fields": [
+            {"name": "Host", "value": "{{ data.host }}", "inline": true},
+            {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+            {"name": "Summary", "value": "{{ fresh }} fresh · {{ stale }} stale · {{ none_count }} missing", "inline": true}
+          ],
+          "timestamp": "{{ data.timestamp }}"
+        }]
+      }
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - freshness_json is defined
+    - freshness_json.rc | default(1) == 0
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Send backup freshness report to Discord
+  ansible.builtin.uri:
+    url: "{{ _report_discord_webhook }}"
+    method: POST
+    body_format: json
+    body: "{{ _backup_embed | from_yaml }}"
+    status_code: [200, 204]
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - _backup_embed is defined
+    - (_report_discord_webhook | default('')) | length > 0
+
 # --- Container Audit Report ---
 - name: Check audit-containers.sh exists
   ansible.builtin.stat:
@@ -460,6 +639,61 @@
     - homelab_apps_mode == 'report'
     - report_type | default('status') in ['audit', 'all']
     - not (audit_script_stat.stat.exists | default(false))
+
+- name: Collect container audit JSON for Discord
+  ansible.builtin.shell: /opt/scripts/audit-containers.sh --json
+  register: audit_json
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - audit_script_stat.stat.exists | default(false)
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Build container audit Discord embed
+  ansible.builtin.set_fact:
+    _audit_embed: |
+      {% set data = audit_json.stdout | from_json %}
+      {% set rogue_count = data.rogue_containers | default([]) | length %}
+      {% set missing_count = data.missing_containers | default([]) | length %}
+      {% set healthy_count = data.healthy_containers | default([]) | length %}
+      {% set has_issues = data.has_issues | default(false) %}
+      {
+        "embeds": [{
+          "title": "🔍 Container Audit Report",
+          "description": "{% if not has_issues %}✅ All containers accounted for — no rogue or missing containers detected.{% else %}{% if rogue_count > 0 %}**🚨 Rogue Containers ({{ rogue_count }}):**\n{% for c in data.rogue_containers %}• `{{ c }}`\n{% endfor %}\n{% endif %}{% if missing_count > 0 %}**⚠️ Missing Containers ({{ missing_count }}):**\n{% for c in data.missing_containers %}• `{{ c }}`\n{% endfor %}{% endif %}{% endif %}",
+          "color": {{ 15158332 if has_issues else 3066993 }},
+          "fields": [
+            {"name": "Host", "value": "{{ data.host }}", "inline": true},
+            {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+            {"name": "Summary", "value": "{{ healthy_count }} healthy · {{ rogue_count }} rogue · {{ missing_count }} missing", "inline": true}
+          ],
+          "timestamp": "{{ data.timestamp }}"
+        }]
+      }
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - audit_json is defined
+    - audit_json.rc | default(1) == 0
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Send container audit report to Discord
+  ansible.builtin.uri:
+    url: "{{ _report_discord_webhook }}"
+    method: POST
+    body_format: json
+    body: "{{ _audit_embed | from_yaml }}"
+    status_code: [200, 204]
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - _audit_embed is defined
+    - (_report_discord_webhook | default('')) | length > 0
 
 # =============================================================================
 # DEPLOY MODE: Create management scripts

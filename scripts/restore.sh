@@ -50,7 +50,8 @@ done
 HOSTNAME_PREFIX="${HOSTNAME_PREFIX:-$(hostname)}"
 RESTORE_DIR="${RESTORE_DIR:-/opt/backups/restore-temp-$$}"
 mkdir -p "${RESTORE_DIR}"
-export TMPDIR="${RESTORE_DIR}"
+# Save and restore TMPDIR so cleanup doesn't break subsequent mktemp calls
+_ORIG_TMPDIR="${TMPDIR:-}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 START_TIME=$(date +%s)
 
@@ -440,6 +441,12 @@ restore_app() {
     log_info "Cleaning up..."
     rm -rf "${RESTORE_DIR}"
     rm -rf "${compose_dir}.old.${TIMESTAMP}"
+    # Restore original TMPDIR so infisical-run/docker can use mktemp
+    if [[ -n "$_ORIG_TMPDIR" ]]; then
+        export TMPDIR="$_ORIG_TMPDIR"
+    else
+        unset TMPDIR
+    fi
     
     # Start app if not data-only mode
     if [[ "$DATA_ONLY" == "false" ]]; then

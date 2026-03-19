@@ -311,6 +311,8 @@
   no_log: true
   delegate_to: localhost
   become: false
+  vars:
+    ansible_become: false
   failed_when: false
   run_once: true
   when: homelab_apps_mode == 'report'
@@ -414,6 +416,8 @@
     status_code: [200, 204]
   delegate_to: localhost
   become: false
+  vars:
+    ansible_become: false
   failed_when: false
   when:
     - homelab_apps_mode == 'report'
@@ -597,6 +601,8 @@
     status_code: [200, 204]
   delegate_to: localhost
   become: false
+  vars:
+    ansible_become: false
   failed_when: false
   when:
     - homelab_apps_mode == 'report'
@@ -676,7 +682,8 @@
     - homelab_apps_mode == 'report'
     - report_type | default('status') in ['audit', 'all']
     - audit_json is defined
-    - audit_json.rc | default(1) == 0
+    - audit_json.stdout is defined
+    - audit_json.stdout | length > 0
     - (_report_discord_webhook | default('')) | length > 0
 
 - name: Send container audit report to Discord
@@ -688,6 +695,8 @@
     status_code: [200, 204]
   delegate_to: localhost
   become: false
+  vars:
+    ansible_become: false
   failed_when: false
   when:
     - homelab_apps_mode == 'report'

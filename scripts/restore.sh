@@ -398,7 +398,7 @@ restore_app() {
     
     # Find backup archive
     local backup_file
-    backup_file=$(ls -1t "${RESTORE_DIR}/opt/backups/${app_name}/"*_data_*.tar.gz 2>/dev/null | head -1)
+    backup_file=$(ls -1t "${RESTORE_DIR}/opt/backups/${app_name}/"*_data_*.tar.gz 2>/dev/null | head -1 || true)
     
     if [[ -z "$backup_file" ]] || [[ ! -f "$backup_file" ]]; then
         log_error "No backup archive found in snapshot"
@@ -427,8 +427,8 @@ restore_app() {
     
     # Restore database if exists
     local db_backup
-    db_backup=$(ls -1t "${RESTORE_DIR}/opt/backups/${app_name}/"*_postgres_*.sql.gz 2>/dev/null | head -1)
-    if [[ -f "$db_backup" ]]; then
+    db_backup=$(ls -1t "${RESTORE_DIR}/opt/backups/${app_name}/"*_postgres_*.sql.gz 2>/dev/null | head -1 || true)
+    if [[ -n "$db_backup" ]] && [[ -f "$db_backup" ]]; then
         log_info "Database backup found, copying for manual restore"
         cp "$db_backup" "${compose_dir}/" 2>/dev/null || true
     fi

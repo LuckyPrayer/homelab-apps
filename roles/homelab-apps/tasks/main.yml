@@ -253,51 +253,44 @@
     - backup_results.results is defined
 
 # =============================================================================
-# RESTORE MODE: Restore apps from B2/restic backup
+# RESTORE MODE: Restore apps from B2/restic backup using restore.sh
 # =============================================================================
 
-- name: Source backup credentials from backup.env
-  ansible.builtin.shell: |
-    . /opt/scripts/backup.env 2>/dev/null || true
-    echo "B2_BUCKET=${B2_BUCKET:-}"
-    echo "B2_ACCOUNT_ID=${B2_ACCOUNT_ID:-}"
-    echo "B2_ACCOUNT_KEY=${B2_ACCOUNT_KEY:-}"
-    echo "RESTIC_PASSWORD=${RESTIC_PASSWORD:-}"
-  register: backup_env_output
-  changed_when: false
-  failed_when: false
+- name: Check restore.sh exists
+  ansible.builtin.stat:
+    path: "{{ homelab_apps_path }}/scripts/restore.sh"
+  register: restore_script_stat
   when: homelab_apps_mode == 'restore'
 
-- name: Set backup credentials from env
-  ansible.builtin.set_fact:
-    backup_b2_bucket: "{{ (backup_env_output.stdout_lines | select('match', '^B2_BUCKET=') | first | default('B2_BUCKET=')).split('=', 1)[1] }}"
-    backup_b2_account_id: "{{ (backup_env_output.stdout_lines | select('match', '^B2_ACCOUNT_ID=') | first | default('B2_ACCOUNT_ID=')).split('=', 1)[1] }}"
-    backup_b2_account_key: "{{ (backup_env_output.stdout_lines | select('match', '^B2_ACCOUNT_KEY=') | first | default('B2_ACCOUNT_KEY=')).split('=', 1)[1] }}"
-    backup_restic_password: "{{ (backup_env_output.stdout_lines | select('match', '^RESTIC_PASSWORD=') | first | default('RESTIC_PASSWORD=')).split('=', 1)[1] }}"
-  when:
-    - homelab_apps_mode == 'restore'
-    - backup_env_output.stdout_lines is defined
-    - backup_b2_bucket is not defined or backup_restic_password is not defined
-  no_log: true
-
-- name: Fail if backup credentials missing
+- name: Fail if restore.sh not found
   ansible.builtin.fail:
-    msg: "Backup credentials not available. Ensure /opt/scripts/backup.env exists on {{ inventory_hostname }}."
+    msg: "restore.sh not found at {{ homelab_apps_path }}/scripts/restore.sh. Deploy apps first."
   when:
     - homelab_apps_mode == 'restore'
-    - (backup_restic_password is not defined or backup_restic_password | length == 0)
+    - not (restore_script_stat.stat.exists | default(false))
 
 - name: Display apps to restore
   ansible.builtin.debug:
-    msg: "Apps to restore on {{ inventory_hostname }}: {{ deployable_apps | join(', ') }}{{ ' (force)' if force_restore | default(false) | bool else '' }}"
+    msg: "Apps to restore on {{ inventory_hostname }}: {{ deployable_apps | join(', ') }}"
   when: homelab_apps_mode == 'restore'
 
-- name: Run restore for apps (restore mode)
-  ansible.builtin.include_tasks: restore-app.yml
+- name: Run restore for each app
+  ansible.builtin.shell: |
+    {{ homelab_apps_path }}/scripts/restore.sh {{ item }}
   loop: "{{ deployable_apps }}"
-  loop_control:
-    loop_var: app_name
+  register: restore_results
+  failed_when: false
   when: homelab_apps_mode == 'restore'
+
+- name: Display restore results
+  ansible.builtin.debug:
+    msg: "{{ '✓' if item.rc == 0 else '✗' }} {{ item.item }} (rc={{ item.rc }})"
+  loop: "{{ restore_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown') }}"
+  when:
+    - homelab_apps_mode == 'restore'
+    - restore_results.results is defined
 
 # =============================================================================
 # DEPLOY MODE: Create management scripts

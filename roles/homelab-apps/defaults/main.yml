@@ -18,10 +18,6 @@ homelab_stacks_path: "/opt/stacks"
 # Whether to run restore during deployment
 homelab_apps_restore: true
 
-# Force restore even if data directory already has content
-# Only used in restore mode
-force_restore: false
-
 # Docker user/group for file ownership
 docker_user: "root"
 docker_group: "docker"

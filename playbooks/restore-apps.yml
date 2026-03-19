@@ -1,24 +1,25 @@
 ---
 # Restore Homelab Apps via Semaphore
 #
-# This playbook restores application data from B2/restic backups.
-# The role resolves which apps are assigned per host from manifest.yml,
-# sources backup credentials from /opt/scripts/backup.env, and runs
-# restore-app.yml for each app.
+# This playbook restores application data from B2/restic backups
+# using the restore.sh script. The role resolves which apps are
+# assigned per host from manifest.yml, then runs restore.sh for each.
 #
-# By default, restore skips apps that already have data. Use
-# force_restore=true to overwrite existing data.
+# restore.sh handles:
+#   - Downloading snapshots from B2
+#   - Extracting tar archives to the correct paths
+#   - Stopping/starting containers
+#   - Database restoration (if applicable)
+#   - Pre/post restore hooks from config.yml
 #
 # Usage in Semaphore:
 #   - Template: "Restore Apps - All Hosts"
 #   - Playbook: playbooks/restore-apps.yml
 #   - Arguments: ["--limit", "orion-dev"]
 #   - Arguments: ["-e", "app_filter=vaultwarden"]
-#   - Arguments: ["-e", "force_restore=true"]
 #
 # Prerequisites:
-#   - Apps deployed (repo cloned, config files in place)
-#   - B2 credentials configured via /opt/scripts/backup.env
+#   - Apps deployed (repo cloned, restore.sh + backup.env on host)
 #   - Restic snapshots available in B2 bucket
 
 - name: Restore Homelab Apps
@@ -38,7 +39,6 @@
           - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
           - "Environment: {{ env }}"
           - "App filter: {{ app_filter | default('all') }}"
-          - "Force restore: {{ force_restore | default(false) }}"
 
     - name: Gather facts
       ansible.builtin.setup:

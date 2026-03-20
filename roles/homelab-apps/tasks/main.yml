@@ -457,9 +457,8 @@
 - name: Check per-app backup freshness
   ansible.builtin.shell: |
     . /opt/scripts/backup.env 2>/dev/null || true
+    export B2_ACCOUNT_ID B2_ACCOUNT_KEY RESTIC_PASSWORD
     export RESTIC_REPOSITORY="b2:${B2_BUCKET}:$(hostname)"
-    export AWS_ACCESS_KEY_ID="${B2_ACCOUNT_ID}"
-    export AWS_SECRET_ACCESS_KEY="${B2_ACCOUNT_KEY}"
     echo ""
     echo "════════════════════════════════════════════════════════════════"
     echo "  Backup Freshness Report - $(hostname)"
@@ -523,9 +522,8 @@
 - name: Collect backup freshness JSON for Discord
   ansible.builtin.shell: |
     . /opt/scripts/backup.env 2>/dev/null || true
+    export B2_ACCOUNT_ID B2_ACCOUNT_KEY RESTIC_PASSWORD
     export RESTIC_REPOSITORY="b2:${B2_BUCKET}:$(hostname)"
-    export AWS_ACCESS_KEY_ID="${B2_ACCOUNT_ID}"
-    export AWS_SECRET_ACCESS_KEY="${B2_ACCOUNT_KEY}"
     NOW=$(date +%s)
     echo "{"
     echo "  \"host\": \"$(hostname)\","

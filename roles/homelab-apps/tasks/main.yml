@@ -298,16 +298,13 @@
 
 # --- Fetch Discord Webhook URL from Infisical ---
 - name: Fetch Discord webhook URL from Infisical
-  ansible.builtin.shell: |
-    infisical secrets get DISCORD_WEBHOOK_URL \
-      --path=/services/semaphore \
-      --env={{ env }} \
-      --projectId={{ lookup('env', 'INFISICAL_PROJECT_ID') }} \
-      --plain --silent
-  environment:
-    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  ansible.builtin.uri:
+    url: "https://app.infisical.com/api/v3/secrets/raw?workspaceId={{ lookup('env', 'INFISICAL_PROJECT_ID') }}&environment={{ env }}&secretPath=/services/semaphore"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ lookup('env', 'INFISICAL_TOKEN') }}"
+    return_content: true
   register: _discord_webhook_result
-  changed_when: false
   no_log: true
   delegate_to: localhost
   become: false
@@ -319,7 +316,13 @@
 
 - name: Set Discord webhook fact
   ansible.builtin.set_fact:
-    _report_discord_webhook: "{{ _discord_webhook_result.stdout | default('') }}"
+    _report_discord_webhook: >-
+      {{ (_discord_webhook_result.json.secrets
+          | default([])
+          | selectattr('secretKey', 'equalto', 'DISCORD_WEBHOOK_URL')
+          | map(attribute='secretValue')
+          | first)
+         | default('') }}
   no_log: true
   run_once: true
   when:

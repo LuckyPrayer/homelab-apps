@@ -46,15 +46,22 @@ INFRA_CONTAINERS=(
     "harbor-jobservice"
     "harbor-log"
     "harbor-portal"
-    "harbor-redis"
-    "harbor-registry"
-    "harbor-registryctl"
+    "redis"
+    "registry"
+    "registryctl"
+    "trivy-adapter"
     "nginx"
+{% endif %}
+{% if semaphore_enabled | default(false) %}
+    "semaphore"
+{% endif %}
+{% if docs_server_enabled | default(false) %}
+    "homelab-docs"
 {% endif %}
 {% if pihole_web_port is defined %}
     "pihole"
 {% endif %}
-{% if router_enable_glances | default(false) %}
+{% if glances_enabled | default(true) or router_enable_glances | default(false) %}
     "glances"
 {% endif %}
 {% if uptime_kuma_enabled | default(false) %}

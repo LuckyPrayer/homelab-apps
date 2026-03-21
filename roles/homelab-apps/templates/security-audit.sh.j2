@@ -104,8 +104,10 @@ LISTENING_PORTS=""
 if command -v ss &>/dev/null; then
     LISTENING_PORTS=$(ss -tlnp 2>/dev/null | tail -n +2 | awk '{print $4, $6}' | sed 's/users:(("//' | sed 's/".*//') || true
 fi
-LISTEN_COUNT=$(echo "$LISTENING_PORTS" | grep -c '.' || true)
-LISTEN_COUNT=${LISTEN_COUNT:-0}
+LISTEN_COUNT=0
+if [[ -n "$LISTENING_PORTS" ]]; then
+    LISTEN_COUNT=$(echo "$LISTENING_PORTS" | wc -l)
+fi
 
 # --- 4. Pending Security Updates ---
 PENDING_UPDATES=0
@@ -115,7 +117,9 @@ UPDATES_AVAILABLE=false
 if command -v apt-get &>/dev/null; then
     # Check for security updates
     PENDING_LIST=$(apt-get -s upgrade 2>/dev/null | grep "^Inst" | grep -i "securi" || true)
-    PENDING_UPDATES=$(echo "$PENDING_LIST" | grep -c '.' 2>/dev/null || echo 0)
+    if [[ -n "$PENDING_LIST" ]]; then
+        PENDING_UPDATES=$(echo "$PENDING_LIST" | wc -l)
+    fi
     if [[ $PENDING_UPDATES -gt 0 ]]; then
         UPDATES_AVAILABLE=true
     fi

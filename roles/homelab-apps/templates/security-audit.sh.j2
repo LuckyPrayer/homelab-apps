@@ -84,7 +84,8 @@ SSH_ACCEPTED_LOGINS=0
 if command -v journalctl &>/dev/null; then
     # Count failed SSH attempts
     SSH_FAILED_LOGINS=$(journalctl -u ssh -u sshd --since "$SINCE_DATE" --no-pager 2>/dev/null \
-        | grep -c "Failed password\|authentication failure\|Invalid user\|Connection closed by.*preauth" 2>/dev/null || echo 0)
+        | grep -c -E "Failed password|authentication failure|Invalid user|Connection closed by.*preauth" || true)
+    SSH_FAILED_LOGINS=${SSH_FAILED_LOGINS:-0}
 
     # Get top offending IPs for failed logins
     SSH_FAILED_IPS=$(journalctl -u ssh -u sshd --since "$SINCE_DATE" --no-pager 2>/dev/null \
@@ -94,7 +95,8 @@ if command -v journalctl &>/dev/null; then
 
     # Count accepted logins
     SSH_ACCEPTED_LOGINS=$(journalctl -u ssh -u sshd --since "$SINCE_DATE" --no-pager 2>/dev/null \
-        | grep -c "Accepted" 2>/dev/null || echo 0)
+        | grep -c "Accepted" || true)
+    SSH_ACCEPTED_LOGINS=${SSH_ACCEPTED_LOGINS:-0}
 fi
 
 # --- 3. Listening Ports ---
@@ -102,7 +104,8 @@ LISTENING_PORTS=""
 if command -v ss &>/dev/null; then
     LISTENING_PORTS=$(ss -tlnp 2>/dev/null | tail -n +2 | awk '{print $4, $6}' | sed 's/users:(("//' | sed 's/".*//') || true
 fi
-LISTEN_COUNT=$(echo "$LISTENING_PORTS" | grep -c '.' 2>/dev/null || echo 0)
+LISTEN_COUNT=$(echo "$LISTENING_PORTS" | grep -c '.' || true)
+LISTEN_COUNT=${LISTEN_COUNT:-0}
 
 # --- 4. Pending Security Updates ---
 PENDING_UPDATES=0

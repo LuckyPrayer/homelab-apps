@@ -1,0 +1,65 @@
+---
+# Deploy Security Audit Script to Infrastructure Hosts
+#
+# This playbook deploys the security-audit.sh script to hosts that are NOT
+# managed by the homelab-apps manifest (argus, pharos, atlas, hermes).
+# App hosts (orion, hephaestus) get the script via the standard deploy flow.
+#
+# Usage in Semaphore:
+#   - Template: "Deploy Security Audit - Infra Hosts"
+#   - Playbook: playbooks/deploy-security-audit.yml
+#   - Arguments: ["--limit", "argus-dev"] (optional)
+
+- name: Deploy Security Audit Script
+  hosts: infra_hosts
+  become: true
+  tags:
+    - deploy
+    - security
+
+  pre_tasks:
+    - name: Display deploy info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Deploy Security Audit Script                            ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather minimal facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  tasks:
+    - name: Ensure scripts directory exists
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: '0755'
+
+    - name: Deploy security-audit.sh
+      ansible.builtin.template:
+        src: "../roles/homelab-apps/templates/security-audit.sh.j2"
+        dest: /opt/scripts/security-audit.sh
+        mode: '0755'
+
+    - name: Verify script runs
+      ansible.builtin.shell: /opt/scripts/security-audit.sh --json | python3 -m json.tool > /dev/null
+      register: verify_result
+      failed_when: false
+      changed_when: false
+
+    - name: Display verification result
+      ansible.builtin.debug:
+        msg: "{{ '✓' if verify_result.rc == 0 else '⚠' }} security-audit.sh {{ 'verified OK' if verify_result.rc == 0 else 'produced warnings (rc=' + verify_result.rc|string + ')' }}"
+
+  post_tasks:
+    - name: Deploy complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Security audit script deployed to {{ inventory_hostname }}"
+          - "  Path: /opt/scripts/security-audit.sh"
+          - "  Usage: security-audit.sh [--json] [--days N]"

@@ -1,18 +1,26 @@
 ---
 # Security Audit Report via Semaphore
 #
-# This playbook runs security-audit.sh on target hosts to audit fail2ban,
-# SSH authentication, pending updates, Docker security, and listening ports.
+# This playbook runs security-audit.sh on ALL hosts — both app hosts
+# (orion, hephaestus) and infrastructure hosts (argus, pharos, atlas, hermes).
+#
+# App hosts use the homelab-apps role; infra hosts use inline tasks since
+# they aren't managed by manifest.yml.
 #
 # Usage in Semaphore:
 #   - Template: "Security Audit - All Hosts"
 #   - Playbook: playbooks/report-security.yml
-#   - Arguments: ["--limit", "orion-dev"]
+#   - Arguments: ["--limit", "orion-dev"]  (optional)
 #
 # Prerequisites:
-#   - Apps deployed (security-audit.sh must exist on host)
+#   - security-audit.sh deployed on target hosts
+#   - App hosts: deployed via deploy-all.yml
+#   - Infra hosts: deployed via deploy-security-audit.yml
 
-- name: Security Audit Report
+# =============================================================================
+# Play 1: App hosts — use the homelab-apps role (manifest-aware)
+# =============================================================================
+- name: "Security Audit Report — App Hosts"
   hosts: app_hosts
   become: true
   tags:
@@ -40,6 +48,157 @@
       vars:
         homelab_apps_mode: report
         report_type: security
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Security audit report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"
+
+# =============================================================================
+# Play 2: Infrastructure hosts — inline tasks (not in manifest.yml)
+# =============================================================================
+- name: "Security Audit Report — Infrastructure Hosts"
+  hosts: infra_hosts
+  become: true
+  tags:
+    - report
+    - security
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Security Audit Report (Infrastructure)       ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  tasks:
+    # --- Fetch Discord webhook ---
+    - name: Fetch Discord webhook URL from Infisical
+      ansible.builtin.uri:
+        url: "https://app.infisical.com/api/v3/secrets/raw?workspaceId={{ lookup('env', 'INFISICAL_PROJECT_ID') }}&environment={{ env }}&secretPath=/services/semaphore"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'INFISICAL_TOKEN') }}"
+        return_content: true
+      register: _discord_webhook_result
+      no_log: true
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_become: false
+      failed_when: false
+      run_once: true
+
+    - name: Set Discord webhook fact
+      ansible.builtin.set_fact:
+        _report_discord_webhook: >-
+          {{ (_discord_webhook_result.json.secrets
+              | default([])
+              | selectattr('secretKey', 'equalto', 'DISCORD_WEBHOOK_URL')
+              | map(attribute='secretValue')
+              | first)
+             | default('') }}
+      no_log: true
+      run_once: true
+      when: _discord_webhook_result is defined
+
+    - name: Warn if Discord webhook not available
+      ansible.builtin.debug:
+        msg: "⚠ DISCORD_WEBHOOK_URL not found in Infisical. Reports will display but not send to Discord."
+      run_once: true
+      when: (_report_discord_webhook | default('')) | length == 0
+
+    # --- Run security audit ---
+    - name: Check security-audit.sh exists
+      ansible.builtin.stat:
+        path: /opt/scripts/security-audit.sh
+      register: security_script_stat
+
+    - name: Run security audit report
+      ansible.builtin.shell: /opt/scripts/security-audit.sh
+      register: security_report
+      failed_when: false
+      changed_when: false
+      when: security_script_stat.stat.exists | default(false)
+
+    - name: Display security audit report
+      ansible.builtin.debug:
+        msg: "{{ security_report.stdout }}"
+      when:
+        - security_report.stdout is defined
+        - security_report.stdout | length > 0
+
+    - name: Warn if security-audit.sh not found
+      ansible.builtin.debug:
+        msg: "⚠ security-audit.sh not found on {{ inventory_hostname }}. Run deploy-security-audit.yml first."
+      when: not (security_script_stat.stat.exists | default(false))
+
+    # --- Discord embed ---
+    - name: Collect security audit JSON for Discord
+      ansible.builtin.shell: /opt/scripts/security-audit.sh --json
+      register: security_json
+      failed_when: false
+      changed_when: false
+      when:
+        - security_script_stat.stat.exists | default(false)
+        - (_report_discord_webhook | default('')) | length > 0
+
+    - name: Build security audit Discord embed
+      ansible.builtin.set_fact:
+        _security_embed: |
+          {% set data = security_json.stdout | from_json %}
+          {% set f2b = data.fail2ban %}
+          {% set ssh = data.ssh %}
+          {% set upd = data.updates %}
+          {% set dock = data.docker %}
+          {% set has_issues = (data.issues > 0) %}
+          {% set has_warnings = (data.warnings > 0) %}
+          {
+            "embeds": [{
+              "title": "🛡️ Security Audit Report",
+              "description": "**Fail2Ban**\n{% if not f2b.installed %}⚠️ Not installed{% elif not f2b.running %}❌ Installed but not running{% else %}✅ Active · {{ f2b.jails }} jail(s) · {{ f2b.currently_banned }} currently banned ({{ f2b.total_banned }} total){% endif %}\n\n**SSH Authentication** ({{ data.lookback_days }}d)\n{% if ssh.failed_logins > 200 %}🚨{% elif ssh.failed_logins > 50 %}⚠️{% else %}✅{% endif %} {{ ssh.failed_logins }} failed · {{ ssh.accepted_logins }} accepted{% if ssh.top_offenders | length > 0 %}\nTop offenders: {% for o in ssh.top_offenders[:5] %}`{{ o.ip }}` ({{ o.count }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}\n\n**System Updates**\n{% if upd.auto_upgrade_enabled %}✅{% else %}⚠️{% endif %} Auto-upgrade {{ 'enabled' if upd.auto_upgrade_enabled else 'disabled' }} · {% if upd.pending_security > 0 %}⚠️ {{ upd.pending_security }} pending{% else %}✅ Up to date{% endif %} · {% if upd.needs_restart %}⚠️ Reboot required{% else %}✅ No reboot needed{% endif %}\n\n**Docker Security**\n{{ dock.total_containers }} containers · {% if dock.security_issues > 0 %}⚠️ {{ dock.privileged_containers | length }} privileged{% else %}✅ No privileged containers{% endif %}{% if dock.host_network_containers | length > 0 %} · {{ dock.host_network_containers | length }} host-networked{% endif %}",
+              "color": {% if has_issues %}15158332{% elif has_warnings %}15105570{% else %}3066993{% endif %},
+              "fields": [
+                {"name": "Host", "value": "{{ data.host }}", "inline": true},
+                {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+                {"name": "Summary", "value": "{{ data.issues }} issue(s) · {{ data.warnings }} warning(s)", "inline": true}
+              ],
+              "timestamp": "{{ data.timestamp }}"
+            }]
+          }
+      when:
+        - security_json is defined
+        - security_json.rc is defined
+        - security_json.stdout is defined
+        - security_json.stdout | length > 0
+        - (_report_discord_webhook | default('')) | length > 0
+
+    - name: Send security audit report to Discord
+      ansible.builtin.uri:
+        url: "{{ _report_discord_webhook }}"
+        method: POST
+        body_format: json
+        body: "{{ _security_embed | from_yaml }}"
+        status_code: [200, 204]
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_become: false
+      failed_when: false
+      when:
+        - _security_embed is defined
+        - (_report_discord_webhook | default('')) | length > 0
 
   post_tasks:
     - name: Report complete

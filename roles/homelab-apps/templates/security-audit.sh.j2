@@ -22,6 +22,7 @@ set -euo pipefail
 HOST="{{ inventory_hostname }}"
 ENV="{{ env | default('dev') }}"
 
+{% raw %}
 # =============================================================================
 # Argument parsing
 # =============================================================================
@@ -146,20 +147,20 @@ DOCKER_ISSUES=0
 
 if command -v docker &>/dev/null; then
     # Get all running container names
-    mapfile -t CONTAINERS < <(docker ps --format '{{ '{{' }}.Names{{ '}}' }}' 2>/dev/null)
+    mapfile -t CONTAINERS < <(docker ps --format '{{.Names}}' 2>/dev/null)
 
     for cname in "${CONTAINERS[@]}"; do
         [[ -z "$cname" ]] && continue
 
         # Check privileged mode
-        is_privileged=$(docker inspect --format '{{ '{{' }}.HostConfig.Privileged{{ '}}' }}' "$cname" 2>/dev/null || echo "false")
+        is_privileged=$(docker inspect --format '{{.HostConfig.Privileged}}' "$cname" 2>/dev/null || echo "false")
         if [[ "$is_privileged" == "true" ]]; then
             DOCKER_PRIVILEGED+=("$cname")
             DOCKER_ISSUES=$((DOCKER_ISSUES + 1))
         fi
 
         # Check host network mode
-        net_mode=$(docker inspect --format '{{ '{{' }}.HostConfig.NetworkMode{{ '}}' }}' "$cname" 2>/dev/null || echo "")
+        net_mode=$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$cname" 2>/dev/null || echo "")
         if [[ "$net_mode" == "host" ]]; then
             DOCKER_HOST_NET+=("$cname")
             # Host networking is informational, not necessarily an issue
@@ -362,3 +363,4 @@ else
     echo "────────────────────────────────────────────────────────────────"
     exit 0
 fi
+{% endraw %}

@@ -1,0 +1,49 @@
+---
+# Security Audit Report via Semaphore
+#
+# This playbook runs security-audit.sh on target hosts to audit fail2ban,
+# SSH authentication, pending updates, Docker security, and listening ports.
+#
+# Usage in Semaphore:
+#   - Template: "Security Audit - All Hosts"
+#   - Playbook: playbooks/report-security.yml
+#   - Arguments: ["--limit", "orion-dev"]
+#
+# Prerequisites:
+#   - Apps deployed (security-audit.sh must exist on host)
+
+- name: Security Audit Report
+  hosts: app_hosts
+  become: true
+  tags:
+    - report
+    - security
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: Security Audit Report                        ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: homelab-apps
+      vars:
+        homelab_apps_mode: report
+        report_type: security
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Security audit report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"

@@ -705,6 +705,103 @@
     - _audit_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
 
+# --- Security Audit Report ---
+- name: Check security-audit.sh exists
+  ansible.builtin.stat:
+    path: /opt/scripts/security-audit.sh
+  register: security_script_stat
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+
+- name: Run security audit report
+  ansible.builtin.shell: /opt/scripts/security-audit.sh
+  register: security_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - security_script_stat.stat.exists | default(false)
+
+- name: Display security audit report
+  ansible.builtin.debug:
+    msg: "{{ security_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - security_report.stdout is defined
+    - security_report.stdout | length > 0
+
+- name: Warn if security-audit.sh not found
+  ansible.builtin.debug:
+    msg: "⚠ security-audit.sh not found on {{ inventory_hostname }}. Run deploy first."
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - not (security_script_stat.stat.exists | default(false))
+
+- name: Collect security audit JSON for Discord
+  ansible.builtin.shell: /opt/scripts/security-audit.sh --json
+  register: security_json
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - security_script_stat.stat.exists | default(false)
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Build security audit Discord embed
+  ansible.builtin.set_fact:
+    _security_embed: |
+      {% set data = security_json.stdout | from_json %}
+      {% set f2b = data.fail2ban %}
+      {% set ssh = data.ssh %}
+      {% set upd = data.updates %}
+      {% set dock = data.docker %}
+      {% set has_issues = (data.issues > 0) %}
+      {% set has_warnings = (data.warnings > 0) %}
+      {
+        "embeds": [{
+          "title": "🛡️ Security Audit Report",
+          "description": "**Fail2Ban**\n{% if not f2b.installed %}⚠️ Not installed{% elif not f2b.running %}❌ Installed but not running{% else %}✅ Active · {{ f2b.jails }} jail(s) · {{ f2b.currently_banned }} currently banned ({{ f2b.total_banned }} total){% endif %}\n\n**SSH Authentication** ({{ data.lookback_days }}d)\n{% if ssh.failed_logins > 200 %}🚨{% elif ssh.failed_logins > 50 %}⚠️{% else %}✅{% endif %} {{ ssh.failed_logins }} failed · {{ ssh.accepted_logins }} accepted{% if ssh.top_offenders | length > 0 %}\nTop offenders: {% for o in ssh.top_offenders[:5] %}`{{ o.ip }}` ({{ o.count }}){% if not loop.last %}, {% endif %}{% endfor %}{% endif %}\n\n**System Updates**\n{% if upd.auto_upgrade_enabled %}✅{% else %}⚠️{% endif %} Auto-upgrade {{ 'enabled' if upd.auto_upgrade_enabled else 'disabled' }} · {% if upd.pending_security > 0 %}⚠️ {{ upd.pending_security }} pending{% else %}✅ Up to date{% endif %} · {% if upd.needs_restart %}⚠️ Reboot required{% else %}✅ No reboot needed{% endif %}\n\n**Docker Security**\n{{ dock.total_containers }} containers · {% if dock.security_issues > 0 %}⚠️ {{ dock.privileged_containers | length }} privileged{% else %}✅ No privileged containers{% endif %}{% if dock.host_network_containers | length > 0 %} · {{ dock.host_network_containers | length }} host-networked{% endif %}",
+          "color": {% if has_issues %}15158332{% elif has_warnings %}15105570{% else %}3066993{% endif %},
+          "fields": [
+            {"name": "Host", "value": "{{ data.host }}", "inline": true},
+            {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+            {"name": "Summary", "value": "{{ data.issues }} issue(s) · {{ data.warnings }} warning(s)", "inline": true}
+          ],
+          "timestamp": "{{ data.timestamp }}"
+        }]
+      }
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - security_json is defined
+    - security_json.rc is defined
+    - security_json.stdout is defined
+    - security_json.stdout | length > 0
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Send security audit report to Discord
+  ansible.builtin.uri:
+    url: "{{ _report_discord_webhook }}"
+    method: POST
+    body_format: json
+    body: "{{ _security_embed | from_yaml }}"
+    status_code: [200, 204]
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - _security_embed is defined
+    - (_report_discord_webhook | default('')) | length > 0
+
 # =============================================================================
 # DEPLOY MODE: Create management scripts
 # =============================================================================
@@ -726,6 +823,13 @@
 # =============================================================================
 # DEPLOY MODE: Setup container audit (detect rogue/missing containers)
 # =============================================================================
+
+- name: Create security-audit script
+  ansible.builtin.template:
+    src: security-audit.sh.j2
+    dest: /opt/scripts/security-audit.sh
+    mode: '0755'
+  when: homelab_apps_mode == 'deploy'
 
 - name: Create audit-containers script
   ansible.builtin.template:
@@ -812,6 +916,7 @@
         - /opt/scripts/deploy-apps.sh        # Redeploy all apps
         - /opt/scripts/app-status.sh         # Check app status
         - /opt/scripts/audit-containers.sh   # Detect rogue/missing containers
+        - /opt/scripts/security-audit.sh     # Security posture audit
         - /usr/local/bin/refresh-secrets.sh  # Refresh secrets from Infisical
       
       Timers:
@@ -820,6 +925,7 @@
       
       Manual usage:
         - audit-containers.sh [--json|--remove|--quiet]
+        - security-audit.sh [--json|--days N]
         - refresh-secrets.sh [--force] [app-name]
       
       ════════════════════════════════════════════════════════════════

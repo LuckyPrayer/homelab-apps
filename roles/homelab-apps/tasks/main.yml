@@ -802,6 +802,101 @@
     - _security_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
 
+# --- TLS Certificate Expiry Report ---
+- name: Check cert-expiry.sh exists
+  ansible.builtin.stat:
+    path: /opt/scripts/cert-expiry.sh
+  register: cert_script_stat
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+
+- name: Run certificate expiry report
+  ansible.builtin.shell: /opt/scripts/cert-expiry.sh
+  register: cert_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - cert_script_stat.stat.exists | default(false)
+
+- name: Display certificate expiry report
+  ansible.builtin.debug:
+    msg: "{{ cert_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - cert_report.stdout is defined
+    - cert_report.stdout | length > 0
+
+- name: Warn if cert-expiry.sh not found
+  ansible.builtin.debug:
+    msg: "⚠ cert-expiry.sh not found on {{ inventory_hostname }}. Run deploy first."
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - not (cert_script_stat.stat.exists | default(false))
+
+- name: Collect cert expiry JSON for Discord
+  ansible.builtin.shell: /opt/scripts/cert-expiry.sh --json
+  register: cert_json
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - cert_script_stat.stat.exists | default(false)
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Build cert expiry Discord embed
+  ansible.builtin.set_fact:
+    _cert_embed: |
+      {% set data = cert_json.stdout | from_json %}
+      {% set s = data.summary %}
+      {% set has_issues = (data.issues > 0) %}
+      {% set has_warnings = (data.warnings > 0) %}
+      {% set certs = data.certificates %}
+      {
+        "embeds": [{
+          "title": "🔒 TLS Certificate Expiry Report",
+          "description": "{% if not data.has_traefik %}ℹ️ No Traefik/acme.json on this host{% elif s.total == 0 %}⚠️ No certificates found in acme.json{% else %}**{{ s.total }} certificate(s)** · {{ s.valid }} valid{% if s.expiring > 0 %} · ⚠️ {{ s.expiring }} expiring soon{% endif %}{% if s.expired > 0 %} · ❌ {{ s.expired }} expired{% endif %}\n{% for c in certs %}{% if c.status == 'expired' %}\n❌{% elif c.status == 'critical' %}\n🚨{% elif c.status == 'warning' %}\n⚠️{% else %}\n✅{% endif %} `{{ c.domain }}` — {{ c.days_left }}d left ({{ c.expiry }}){% endfor %}{% endif %}",
+          "color": {% if has_issues %}15158332{% elif has_warnings %}15105570{% else %}3066993{% endif %},
+          "fields": [
+            {"name": "Host", "value": "{{ data.host }}", "inline": true},
+            {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+            {"name": "Certificates", "value": "{{ s.valid }}✅ {{ s.expiring }}⚠️ {{ s.expired }}❌", "inline": true}
+          ],
+          "timestamp": "{{ data.timestamp }}"
+        }]
+      }
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - cert_json is defined
+    - cert_json.rc is defined
+    - cert_json.stdout is defined
+    - cert_json.stdout | length > 0
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Send cert expiry report to Discord
+  ansible.builtin.uri:
+    url: "{{ _report_discord_webhook }}"
+    method: POST
+    body_format: json
+    body: "{{ _cert_embed | from_yaml }}"
+    status_code: [200, 204]
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - _cert_embed is defined
+    - (_report_discord_webhook | default('')) | length > 0
+
 # =============================================================================
 # DEPLOY MODE: Create management scripts
 # =============================================================================
@@ -828,6 +923,13 @@
   ansible.builtin.template:
     src: security-audit.sh.j2
     dest: /opt/scripts/security-audit.sh
+    mode: '0755'
+  when: homelab_apps_mode == 'deploy'
+
+- name: Create cert-expiry script
+  ansible.builtin.template:
+    src: cert-expiry.sh.j2
+    dest: /opt/scripts/cert-expiry.sh
     mode: '0755'
   when: homelab_apps_mode == 'deploy'
 
@@ -917,6 +1019,7 @@
         - /opt/scripts/app-status.sh         # Check app status
         - /opt/scripts/audit-containers.sh   # Detect rogue/missing containers
         - /opt/scripts/security-audit.sh     # Security posture audit
+        - /opt/scripts/cert-expiry.sh        # TLS certificate expiry check
         - /usr/local/bin/refresh-secrets.sh  # Refresh secrets from Infisical
       
       Timers:
@@ -926,6 +1029,7 @@
       Manual usage:
         - audit-containers.sh [--json|--remove|--quiet]
         - security-audit.sh [--json|--days N]
+        - cert-expiry.sh [--json|--warn N|--crit N]
         - refresh-secrets.sh [--force] [app-name]
       
       ════════════════════════════════════════════════════════════════

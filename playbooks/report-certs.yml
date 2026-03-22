@@ -1,0 +1,205 @@
+---
+# TLS Certificate Expiry Report via Semaphore
+#
+# This playbook runs cert-expiry.sh on hosts with Traefik to check
+# TLS certificate expiry dates from acme.json.
+#
+# Hosts without Traefik (no acme.json) will report "no certs" gracefully.
+#
+# Usage in Semaphore:
+#   - Template: "Cert Expiry - All Hosts"
+#   - Playbook: playbooks/report-certs.yml
+#   - Arguments: ["--limit", "orion-dev"]  (optional)
+#
+# Prerequisites:
+#   - cert-expiry.sh deployed on target hosts
+#   - App hosts: deployed via deploy-all.yml
+#   - Infra hosts: deployed via deploy-security-audit.yml (includes cert-expiry)
+
+# =============================================================================
+# Play 1: App hosts — use the homelab-apps role (manifest-aware)
+# =============================================================================
+- name: "TLS Certificate Expiry Report — App Hosts"
+  hosts: app_hosts
+  become: true
+  tags:
+    - report
+    - certs
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: TLS Certificate Expiry Report                ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: homelab-apps
+      vars:
+        homelab_apps_mode: report
+        report_type: certs
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Certificate expiry report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"
+
+# =============================================================================
+# Play 2: Infrastructure hosts — inline tasks (not in manifest.yml)
+# =============================================================================
+- name: "TLS Certificate Expiry Report — Infrastructure Hosts"
+  hosts: infra_hosts
+  become: true
+  tags:
+    - report
+    - certs
+
+  pre_tasks:
+    - name: Display report info
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║      Semaphore: TLS Certificate Expiry Report (Infra)        ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Environment: {{ env }}"
+
+    - name: Gather facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  tasks:
+    # --- Fetch Discord webhook ---
+    - name: Fetch Discord webhook URL from Infisical
+      ansible.builtin.uri:
+        url: "https://app.infisical.com/api/v3/secrets/raw?workspaceId={{ lookup('env', 'INFISICAL_PROJECT_ID') }}&environment={{ env }}&secretPath=/services/semaphore"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ lookup('env', 'INFISICAL_TOKEN') }}"
+        return_content: true
+      register: _discord_webhook_result
+      no_log: true
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_become: false
+      failed_when: false
+      run_once: true
+
+    - name: Set Discord webhook fact
+      ansible.builtin.set_fact:
+        _report_discord_webhook: >-
+          {{ (_discord_webhook_result.json.secrets
+              | default([])
+              | selectattr('secretKey', 'equalto', 'DISCORD_WEBHOOK_URL')
+              | map(attribute='secretValue')
+              | first)
+             | default('') }}
+      no_log: true
+      run_once: true
+      when: _discord_webhook_result is defined
+
+    - name: Warn if Discord webhook not available
+      ansible.builtin.debug:
+        msg: "⚠ DISCORD_WEBHOOK_URL not found in Infisical. Reports will display but not send to Discord."
+      run_once: true
+      when: (_report_discord_webhook | default('')) | length == 0
+
+    # --- Run cert expiry report ---
+    - name: Check cert-expiry.sh exists
+      ansible.builtin.stat:
+        path: /opt/scripts/cert-expiry.sh
+      register: cert_script_stat
+
+    - name: Run certificate expiry report
+      ansible.builtin.shell: /opt/scripts/cert-expiry.sh
+      register: cert_report
+      failed_when: false
+      changed_when: false
+      when: cert_script_stat.stat.exists | default(false)
+
+    - name: Display certificate expiry report
+      ansible.builtin.debug:
+        msg: "{{ cert_report.stdout }}"
+      when:
+        - cert_report.stdout is defined
+        - cert_report.stdout | length > 0
+
+    - name: Warn if cert-expiry.sh not found
+      ansible.builtin.debug:
+        msg: "⚠ cert-expiry.sh not found on {{ inventory_hostname }}. Run deploy-security-audit.yml first."
+      when: not (cert_script_stat.stat.exists | default(false))
+
+    # --- Discord embed ---
+    - name: Collect cert expiry JSON for Discord
+      ansible.builtin.shell: /opt/scripts/cert-expiry.sh --json
+      register: cert_json
+      failed_when: false
+      changed_when: false
+      when:
+        - cert_script_stat.stat.exists | default(false)
+        - (_report_discord_webhook | default('')) | length > 0
+
+    - name: Build cert expiry Discord embed
+      ansible.builtin.set_fact:
+        _cert_embed: |
+          {% set data = cert_json.stdout | from_json %}
+          {% set s = data.summary %}
+          {% set has_issues = (data.issues > 0) %}
+          {% set has_warnings = (data.warnings > 0) %}
+          {% set certs = data.certificates %}
+          {
+            "embeds": [{
+              "title": "🔒 TLS Certificate Expiry Report",
+              "description": "{% if not data.has_traefik %}ℹ️ No Traefik/acme.json on this host{% elif s.total == 0 %}⚠️ No certificates found in acme.json{% else %}**{{ s.total }} certificate(s)** · {{ s.valid }} valid{% if s.expiring > 0 %} · ⚠️ {{ s.expiring }} expiring soon{% endif %}{% if s.expired > 0 %} · ❌ {{ s.expired }} expired{% endif %}\n{% for c in certs %}{% if c.status == 'expired' %}\n❌{% elif c.status == 'critical' %}\n🚨{% elif c.status == 'warning' %}\n⚠️{% else %}\n✅{% endif %} `{{ c.domain }}` — {{ c.days_left }}d left ({{ c.expiry }}){% endfor %}{% endif %}",
+              "color": {% if has_issues %}15158332{% elif has_warnings %}15105570{% else %}3066993{% endif %},
+              "fields": [
+                {"name": "Host", "value": "{{ data.host }}", "inline": true},
+                {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+                {"name": "Certificates", "value": "{{ s.valid }}✅ {{ s.expiring }}⚠️ {{ s.expired }}❌", "inline": true}
+              ],
+              "timestamp": "{{ data.timestamp }}"
+            }]
+          }
+      when:
+        - cert_json is defined
+        - cert_json.rc is defined
+        - cert_json.stdout is defined
+        - cert_json.stdout | length > 0
+        - (_report_discord_webhook | default('')) | length > 0
+
+    - name: Send cert expiry report to Discord
+      ansible.builtin.uri:
+        url: "{{ _report_discord_webhook }}"
+        method: POST
+        body_format: json
+        body: "{{ _cert_embed | from_yaml }}"
+        status_code: [200, 204]
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_become: false
+      failed_when: false
+      when:
+        - _cert_embed is defined
+        - (_report_discord_webhook | default('')) | length > 0
+
+  post_tasks:
+    - name: Report complete
+      ansible.builtin.debug:
+        msg:
+          - "✓ Certificate expiry report complete on {{ inventory_hostname }}"
+          - "  Environment: {{ env }}"

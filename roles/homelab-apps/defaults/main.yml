@@ -5,7 +5,7 @@
 # - deploy:  Full deployment (deploy apps + restore if enabled + management scripts)
 # - backup:  Run backup.sh for resolved apps
 # - restore: Restore apps from B2/restic backup (force restore, skip deploy)
-# - report:  Generate reports (requires report_type: status, backups, audit, security, or all)
+# - report:  Generate reports (requires report_type: status, backups, audit, security, certs, or all)
 homelab_apps_mode: "deploy"
 
 # Git repository settings

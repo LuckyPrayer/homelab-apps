@@ -1,16 +1,16 @@
 ---
-# Deploy Security Audit Script to Infrastructure Hosts
+# Deploy Security Audit & Cert Expiry Scripts to Infrastructure Hosts
 #
-# This playbook deploys the security-audit.sh script to hosts that are NOT
-# managed by the homelab-apps manifest (argus, pharos, atlas, hermes).
-# App hosts (orion, hephaestus) get the script via the standard deploy flow.
+# This playbook deploys security-audit.sh and cert-expiry.sh to hosts that
+# are NOT managed by the homelab-apps manifest (argus, pharos, atlas, hermes).
+# App hosts (orion, hephaestus) get these scripts via the standard deploy flow.
 #
 # Usage in Semaphore:
 #   - Template: "Deploy Security Audit - Infra Hosts"
 #   - Playbook: playbooks/deploy-security-audit.yml
 #   - Arguments: ["--limit", "argus-dev"] (optional)
 
-- name: Deploy Security Audit Script
+- name: Deploy Security Audit & Cert Expiry Scripts
   hosts: infra_hosts
   become: true
   tags:
@@ -22,7 +22,7 @@
       ansible.builtin.debug:
         msg:
           - "╔════════════════════════════════════════════════════════════════╗"
-          - "║      Deploy Security Audit Script                            ║"
+          - "║      Deploy Security & Cert Expiry Scripts                   ║"
           - "╚════════════════════════════════════════════════════════════════╝"
           - ""
           - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
@@ -46,20 +46,36 @@
         dest: /opt/scripts/security-audit.sh
         mode: '0755'
 
-    - name: Verify script runs
+    - name: Deploy cert-expiry.sh
+      ansible.builtin.template:
+        src: "../roles/homelab-apps/templates/cert-expiry.sh.j2"
+        dest: /opt/scripts/cert-expiry.sh
+        mode: '0755'
+
+    - name: Verify security-audit.sh runs
       ansible.builtin.shell: /opt/scripts/security-audit.sh --json | python3 -m json.tool > /dev/null
-      register: verify_result
+      register: verify_security
       failed_when: false
       changed_when: false
 
-    - name: Display verification result
+    - name: Verify cert-expiry.sh runs
+      ansible.builtin.shell: /opt/scripts/cert-expiry.sh --json | python3 -m json.tool > /dev/null
+      register: verify_certs
+      failed_when: false
+      changed_when: false
+
+    - name: Display verification results
       ansible.builtin.debug:
-        msg: "{{ '✓' if verify_result.rc == 0 else '⚠' }} security-audit.sh {{ 'verified OK' if verify_result.rc == 0 else 'produced warnings (rc=' + verify_result.rc|string + ')' }}"
+        msg:
+          - "{{ '✓' if verify_security.rc == 0 else '⚠' }} security-audit.sh {{ 'verified OK' if verify_security.rc == 0 else 'produced warnings (rc=' + verify_security.rc|string + ')' }}"
+          - "{{ '✓' if verify_certs.rc == 0 else '⚠' }} cert-expiry.sh {{ 'verified OK' if verify_certs.rc == 0 else 'produced warnings (rc=' + verify_certs.rc|string + ')' }}"
 
   post_tasks:
     - name: Deploy complete
       ansible.builtin.debug:
         msg:
-          - "✓ Security audit script deployed to {{ inventory_hostname }}"
-          - "  Path: /opt/scripts/security-audit.sh"
-          - "  Usage: security-audit.sh [--json] [--days N]"
+          - "✓ Scripts deployed to {{ inventory_hostname }}"
+          - "  Path: /opt/scripts/"
+          - "  Scripts:"
+          - "    - security-audit.sh [--json] [--days N]"
+          - "    - cert-expiry.sh [--json] [--warn N] [--crit N]"

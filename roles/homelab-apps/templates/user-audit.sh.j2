@@ -348,8 +348,8 @@ done)
 $(for i in "${!SUDO_USERS[@]}"; do
     comma=""
     [[ $i -lt $((TOTAL_SUDO_ENTRIES - 1)) ]] && comma=","
-    # Escape the rule for JSON
-    escaped_rule=$(echo "${SUDO_RULES[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    # Escape the rule for JSON (backslash, double-quote, tab, newline)
+    escaped_rule=$(printf '%s' "${SUDO_RULES[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/$//')
     echo "      {\"user\": \"${SUDO_USERS[$i]}\", \"source\": \"${SUDO_SOURCES[$i]}\", \"scope\": \"${SUDO_SCOPED[$i]}\", \"rule\": \"$escaped_rule\"}$comma"
 done)
     ]
@@ -362,8 +362,8 @@ done)
 $(for i in "${!KEY_USERS[@]}"; do
     comma=""
     [[ $i -lt $((TOTAL_KEYS - 1)) ]] && comma=","
-    escaped_opts=$(echo "${KEY_OPTIONS[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    escaped_comment=$(echo "${KEY_COMMENTS[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    escaped_opts=$(printf '%s' "${KEY_OPTIONS[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+    escaped_comment=$(printf '%s' "${KEY_COMMENTS[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
     echo "      {\"user\": \"${KEY_USERS[$i]}\", \"type\": \"${KEY_TYPES[$i]}\", \"comment\": \"$escaped_comment\", \"status\": \"${KEY_STATUSES[$i]}\", \"file\": \"${KEY_FILES[$i]}\", \"options\": \"$escaped_opts\"}$comma"
 done)
     ]

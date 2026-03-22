@@ -897,6 +897,102 @@
     - _cert_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
 
+# --- User & Sudo Audit Report ---
+- name: Check user-audit.sh exists
+  ansible.builtin.stat:
+    path: /opt/scripts/user-audit.sh
+  register: user_script_stat
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+
+- name: Run user audit report
+  ansible.builtin.shell: /opt/scripts/user-audit.sh
+  register: user_report
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - user_script_stat.stat.exists | default(false)
+
+- name: Display user audit report
+  ansible.builtin.debug:
+    msg: "{{ user_report.stdout }}"
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - user_report.stdout is defined
+    - user_report.stdout | length > 0
+
+- name: Warn if user-audit.sh not found
+  ansible.builtin.debug:
+    msg: "⚠ user-audit.sh not found on {{ inventory_hostname }}. Run deploy first."
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - not (user_script_stat.stat.exists | default(false))
+
+- name: Collect user audit JSON for Discord
+  ansible.builtin.shell: /opt/scripts/user-audit.sh --json
+  register: user_json
+  failed_when: false
+  changed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - user_script_stat.stat.exists | default(false)
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Build user audit Discord embed
+  ansible.builtin.set_fact:
+    _user_embed: |
+      {% set data = user_json.stdout | from_json %}
+      {% set u = data.users %}
+      {% set s = data.sudoers %}
+      {% set k = data.ssh_keys %}
+      {% set has_issues = (data.issues > 0) %}
+      {% set has_warnings = (data.warnings > 0) %}
+      {
+        "embeds": [{
+          "title": "👤 User & Sudo Audit",
+          "description": "**User Accounts** (UID ≥ 1000)\n{{ u.total }} account(s){% if u.unexpected > 0 %} · ⚠️ {{ u.unexpected }} unexpected{% else %} · ✅ all expected{% endif %}\n{% for a in u.accounts %}{% if a.status == 'unexpected' %}\n⚠️{% else %}\n✅{% endif %} `{{ a.name }}` uid={{ a.uid }}{% endfor %}\n\n**Sudoers**\n{{ s.blanket_nopasswd }} blanket NOPASSWD · {{ s.scoped_nopasswd }} scoped{% if s.unexpected_blanket > 0 %} · ❌ {{ s.unexpected_blanket }} unexpected blanket{% endif %}\n\n**SSH Keys**\n{{ k.total }} key(s){% if k.unexpected > 0 %} · ❌ {{ k.unexpected }} unexpected{% endif %}{% if k.duplicates > 0 %} · ⚠️ {{ k.duplicates }} duplicate{% endif %}{% if k.unexpected == 0 and k.duplicates == 0 %} · ✅ all expected{% endif %}",
+          "color": {% if has_issues %}15158332{% elif has_warnings %}15105570{% else %}3066993{% endif %},
+          "fields": [
+            {"name": "Host", "value": "{{ data.host }}", "inline": true},
+            {"name": "Environment", "value": "{{ data.env }}", "inline": true},
+            {"name": "Summary", "value": "{{ data.issues }} issue(s) · {{ data.warnings }} warning(s)", "inline": true}
+          ],
+          "timestamp": "{{ data.timestamp }}"
+        }]
+      }
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - user_json is defined
+    - user_json.rc is defined
+    - user_json.stdout is defined
+    - user_json.stdout | length > 0
+    - (_report_discord_webhook | default('')) | length > 0
+
+- name: Send user audit report to Discord
+  ansible.builtin.uri:
+    url: "{{ _report_discord_webhook }}"
+    method: POST
+    body_format: json
+    body: "{{ _user_embed | from_yaml }}"
+    status_code: [200, 204]
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - _user_embed is defined
+    - (_report_discord_webhook | default('')) | length > 0
+
 # =============================================================================
 # DEPLOY MODE: Create management scripts
 # =============================================================================
@@ -930,6 +1026,13 @@
   ansible.builtin.template:
     src: cert-expiry.sh.j2
     dest: /opt/scripts/cert-expiry.sh
+    mode: '0755'
+  when: homelab_apps_mode == 'deploy'
+
+- name: Create user-audit script
+  ansible.builtin.template:
+    src: user-audit.sh.j2
+    dest: /opt/scripts/user-audit.sh
     mode: '0755'
   when: homelab_apps_mode == 'deploy'
 
@@ -1020,6 +1123,7 @@
         - /opt/scripts/audit-containers.sh   # Detect rogue/missing containers
         - /opt/scripts/security-audit.sh     # Security posture audit
         - /opt/scripts/cert-expiry.sh        # TLS certificate expiry check
+        - /opt/scripts/user-audit.sh          # User & sudo audit
         - /usr/local/bin/refresh-secrets.sh  # Refresh secrets from Infisical
       
       Timers:
@@ -1030,6 +1134,7 @@
         - audit-containers.sh [--json|--remove|--quiet]
         - security-audit.sh [--json|--days N]
         - cert-expiry.sh [--json|--warn N|--crit N]
+        - user-audit.sh [--json]
         - refresh-secrets.sh [--force] [app-name]
       
       ════════════════════════════════════════════════════════════════

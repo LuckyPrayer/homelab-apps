@@ -108,40 +108,6 @@ for acme_file in "${ACME_PATHS[@]}"; do
     fi
 
     # Use python3 to extract cert data from acme.json
-    cert_data=$(python3 << 'PYEOF'
-import json, base64, sys
-
-try:
-    with open("ACME_FILE_PLACEHOLDER") as f:
-        data = json.load(f)
-except Exception as e:
-    print(f"ERROR|Failed to parse: {e}", file=sys.stderr)
-    sys.exit(0)
-
-for resolver_name, resolver_data in data.items():
-    certs = resolver_data.get("Certificates", resolver_data.get("certificates", []))
-    if not certs:
-        continue
-    for cert_entry in certs:
-        domain_info = cert_entry.get("domain", cert_entry.get("Domain", {}))
-        main_domain = domain_info.get("main", "unknown")
-        sans = domain_info.get("sans", []) or []
-        cert_pem_b64 = cert_entry.get("certificate", cert_entry.get("Certificate", ""))
-        if cert_pem_b64:
-            try:
-                cert_pem = base64.b64decode(cert_pem_b64).decode("utf-8", errors="replace")
-                # Output: resolver|domain|sans_csv|cert_pem_oneline
-                sans_str = ",".join(sans) if sans else ""
-                # Replace newlines in PEM with a marker for bash processing
-                pem_oneline = cert_pem.replace("\n", "%%NL%%")
-                print(f"{resolver_name}|{main_domain}|{sans_str}|{pem_oneline}")
-            except Exception:
-                print(f"{resolver_name}|{main_domain}|{','.join(sans) if sans else ''}|ERROR")
-PYEOF
-    )
-    # Replace placeholder with actual file path
-    cert_data=$(echo "$cert_data" | sed "s|ACME_FILE_PLACEHOLDER|$acme_file|")
-    # Re-run with correct path
     cert_data=$(python3 -c "
 import json, base64, sys
 try:

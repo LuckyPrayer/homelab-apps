@@ -337,6 +337,43 @@
     - homelab_apps_mode == 'report'
     - (_report_discord_webhook | default('')) | length == 0
 
+# --- Fetch SMTP credentials from same Infisical result ---
+- name: Set SMTP credentials for email reports
+  ansible.builtin.set_fact:
+    _report_smtp_host: >-
+      {{ (_discord_webhook_result.json.secrets | default([])
+          | selectattr('secretKey', 'equalto', 'SMTP_HOST')
+          | map(attribute='secretValue') | first) | default('') }}
+    _report_smtp_port: >-
+      {{ (_discord_webhook_result.json.secrets | default([])
+          | selectattr('secretKey', 'equalto', 'SMTP_PORT')
+          | map(attribute='secretValue') | first) | default('587') }}
+    _report_smtp_user: >-
+      {{ (_discord_webhook_result.json.secrets | default([])
+          | selectattr('secretKey', 'equalto', 'SMTP_USER')
+          | map(attribute='secretValue') | first) | default('') }}
+    _report_smtp_password: >-
+      {{ (_discord_webhook_result.json.secrets | default([])
+          | selectattr('secretKey', 'equalto', 'SMTP_PASSWORD')
+          | map(attribute='secretValue') | first) | default('') }}
+    _report_smtp_from: >-
+      {{ (_discord_webhook_result.json.secrets | default([])
+          | selectattr('secretKey', 'equalto', 'SMTP_FROM')
+          | map(attribute='secretValue') | first) | default('Homelab Reports <reports@thebozic.com>') }}
+  no_log: true
+  run_once: true
+  when:
+    - homelab_apps_mode == 'report'
+    - _discord_webhook_result is defined
+
+- name: Warn if SMTP not configured
+  ansible.builtin.debug:
+    msg: "⚠ SMTP credentials not found in Infisical at /services/semaphore. Email reports will be skipped."
+  run_once: true
+  when:
+    - homelab_apps_mode == 'report'
+    - (_report_smtp_host | default('')) | length == 0
+
 # --- Container Status Report ---
 - name: Check app-status.sh exists
   ansible.builtin.stat:
@@ -427,6 +464,31 @@
     - report_type | default('status') in ['status', 'all']
     - _status_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
+
+- name: Email container status report
+  community.general.mail:
+    host: "{{ _report_smtp_host }}"
+    port: "{{ _report_smtp_port | int }}"
+    username: "{{ _report_smtp_user }}"
+    password: "{{ _report_smtp_password }}"
+    from: "{{ _report_smtp_from }}"
+    to: "{{ report_email_to | default('reports@thebozic.com') }}"
+    subject: "📊 Container Status — {{ inventory_hostname }} ({{ env }})"
+    subtype: plain
+    body: "{{ status_report.stdout | default('No output') }}"
+    secure: starttls
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  no_log: true
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['status', 'all']
+    - status_report.stdout is defined
+    - status_report.stdout | length > 0
+    - (_report_smtp_host | default('')) | length > 0
 
 # --- Backup Report ---
 - name: Check restore.sh exists (for backup report)
@@ -611,6 +673,31 @@
     - _backup_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
 
+- name: Email backup freshness report
+  community.general.mail:
+    host: "{{ _report_smtp_host }}"
+    port: "{{ _report_smtp_port | int }}"
+    username: "{{ _report_smtp_user }}"
+    password: "{{ _report_smtp_password }}"
+    from: "{{ _report_smtp_from }}"
+    to: "{{ report_email_to | default('reports@thebozic.com') }}"
+    subject: "💾 Backup Freshness — {{ inventory_hostname }} ({{ env }})"
+    subtype: plain
+    body: "{{ backup_report.stdout | default('No output') }}"
+    secure: starttls
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  no_log: true
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['backups', 'all']
+    - backup_report.stdout is defined
+    - backup_report.stdout | length > 0
+    - (_report_smtp_host | default('')) | length > 0
+
 # --- Container Audit Report ---
 - name: Check audit-containers.sh exists
   ansible.builtin.stat:
@@ -704,6 +791,31 @@
     - report_type | default('status') in ['audit', 'all']
     - _audit_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
+
+- name: Email container audit report
+  community.general.mail:
+    host: "{{ _report_smtp_host }}"
+    port: "{{ _report_smtp_port | int }}"
+    username: "{{ _report_smtp_user }}"
+    password: "{{ _report_smtp_password }}"
+    from: "{{ _report_smtp_from }}"
+    to: "{{ report_email_to | default('reports@thebozic.com') }}"
+    subject: "🔍 Container Audit — {{ inventory_hostname }} ({{ env }})"
+    subtype: plain
+    body: "{{ audit_report.stdout | default('No output') }}"
+    secure: starttls
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  no_log: true
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['audit', 'all']
+    - audit_report.stdout is defined
+    - audit_report.stdout | length > 0
+    - (_report_smtp_host | default('')) | length > 0
 
 # --- Security Audit Report ---
 - name: Check security-audit.sh exists
@@ -802,6 +914,31 @@
     - _security_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
 
+- name: Email security audit report
+  community.general.mail:
+    host: "{{ _report_smtp_host }}"
+    port: "{{ _report_smtp_port | int }}"
+    username: "{{ _report_smtp_user }}"
+    password: "{{ _report_smtp_password }}"
+    from: "{{ _report_smtp_from }}"
+    to: "{{ report_email_to | default('reports@thebozic.com') }}"
+    subject: "🛡️ Security Audit — {{ inventory_hostname }} ({{ env }})"
+    subtype: plain
+    body: "{{ security_report.stdout | default('No output') }}"
+    secure: starttls
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  no_log: true
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['security', 'all']
+    - security_report.stdout is defined
+    - security_report.stdout | length > 0
+    - (_report_smtp_host | default('')) | length > 0
+
 # --- TLS Certificate Expiry Report ---
 - name: Check cert-expiry.sh exists
   ansible.builtin.stat:
@@ -896,6 +1033,31 @@
     - report_type | default('status') in ['certs', 'all']
     - _cert_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
+
+- name: Email cert expiry report
+  community.general.mail:
+    host: "{{ _report_smtp_host }}"
+    port: "{{ _report_smtp_port | int }}"
+    username: "{{ _report_smtp_user }}"
+    password: "{{ _report_smtp_password }}"
+    from: "{{ _report_smtp_from }}"
+    to: "{{ report_email_to | default('reports@thebozic.com') }}"
+    subject: "🔒 TLS Certificate Expiry — {{ inventory_hostname }} ({{ env }})"
+    subtype: plain
+    body: "{{ cert_report.stdout | default('No output') }}"
+    secure: starttls
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  no_log: true
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['certs', 'all']
+    - cert_report.stdout is defined
+    - cert_report.stdout | length > 0
+    - (_report_smtp_host | default('')) | length > 0
 
 # --- User & Sudo Audit Report ---
 - name: Check user-audit.sh exists
@@ -992,6 +1154,31 @@
     - report_type | default('status') in ['users', 'all']
     - _user_embed is defined
     - (_report_discord_webhook | default('')) | length > 0
+
+- name: Email user audit report
+  community.general.mail:
+    host: "{{ _report_smtp_host }}"
+    port: "{{ _report_smtp_port | int }}"
+    username: "{{ _report_smtp_user }}"
+    password: "{{ _report_smtp_password }}"
+    from: "{{ _report_smtp_from }}"
+    to: "{{ report_email_to | default('reports@thebozic.com') }}"
+    subject: "👤 User & Sudo Audit — {{ inventory_hostname }} ({{ env }})"
+    subtype: plain
+    body: "{{ user_report.stdout | default('No output') }}"
+    secure: starttls
+  delegate_to: localhost
+  become: false
+  vars:
+    ansible_become: false
+  no_log: true
+  failed_when: false
+  when:
+    - homelab_apps_mode == 'report'
+    - report_type | default('status') in ['users', 'all']
+    - user_report.stdout is defined
+    - user_report.stdout | length > 0
+    - (_report_smtp_host | default('')) | length > 0
 
 # =============================================================================
 # DEPLOY MODE: Create management scripts

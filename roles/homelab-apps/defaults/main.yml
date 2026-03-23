@@ -8,6 +8,9 @@
 # - report:  Generate reports (requires report_type: status, backups, audit, security, certs, users, or all)
 homelab_apps_mode: "deploy"
 
+# Email recipient for report delivery
+report_email_to: "reports@thebozic.com"
+
 # Git repository settings
 homelab_apps_repo: "https://github.com/LuckyPrayer/homelab-apps.git"
 homelab_apps_branch: "main"

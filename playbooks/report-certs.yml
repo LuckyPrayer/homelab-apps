@@ -118,6 +118,32 @@
       run_once: true
       when: (_report_discord_webhook | default('')) | length == 0
 
+    - name: Set SMTP credentials for email reports
+      ansible.builtin.set_fact:
+        _report_smtp_host: >-
+          {{ (_discord_webhook_result.json.secrets | default([])
+              | selectattr('secretKey', 'equalto', 'SMTP_HOST')
+              | map(attribute='secretValue') | first) | default('') }}
+        _report_smtp_port: >-
+          {{ (_discord_webhook_result.json.secrets | default([])
+              | selectattr('secretKey', 'equalto', 'SMTP_PORT')
+              | map(attribute='secretValue') | first) | default('587') }}
+        _report_smtp_user: >-
+          {{ (_discord_webhook_result.json.secrets | default([])
+              | selectattr('secretKey', 'equalto', 'SMTP_USER')
+              | map(attribute='secretValue') | first) | default('') }}
+        _report_smtp_password: >-
+          {{ (_discord_webhook_result.json.secrets | default([])
+              | selectattr('secretKey', 'equalto', 'SMTP_PASSWORD')
+              | map(attribute='secretValue') | first) | default('') }}
+        _report_smtp_from: >-
+          {{ (_discord_webhook_result.json.secrets | default([])
+              | selectattr('secretKey', 'equalto', 'SMTP_FROM')
+              | map(attribute='secretValue') | first) | default('Homelab Reports <reports@thebozic.com>') }}
+      no_log: true
+      run_once: true
+      when: _discord_webhook_result is defined
+
     # --- Run cert expiry report ---
     - name: Check cert-expiry.sh exists
       ansible.builtin.stat:
@@ -196,6 +222,29 @@
       when:
         - _cert_embed is defined
         - (_report_discord_webhook | default('')) | length > 0
+
+    - name: Email cert expiry report
+      community.general.mail:
+        host: "{{ _report_smtp_host }}"
+        port: "{{ _report_smtp_port | int }}"
+        username: "{{ _report_smtp_user }}"
+        password: "{{ _report_smtp_password }}"
+        from: "{{ _report_smtp_from }}"
+        to: "{{ report_email_to | default('reports@thebozic.com') }}"
+        subject: "🔒 TLS Certificate Expiry — {{ inventory_hostname }} ({{ env }})"
+        subtype: plain
+        body: "{{ cert_report.stdout | default('No output') }}"
+        secure: starttls
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_become: false
+      no_log: true
+      failed_when: false
+      when:
+        - cert_report.stdout is defined
+        - cert_report.stdout | length > 0
+        - (_report_smtp_host | default('')) | length > 0
 
   post_tasks:
     - name: Report complete

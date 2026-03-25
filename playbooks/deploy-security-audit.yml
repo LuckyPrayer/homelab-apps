@@ -11,8 +11,10 @@
 #   - Arguments: ["--limit", "argus-dev"] (optional)
 
 - name: Deploy Security, Cert Expiry & User Audit Scripts
-  hosts: infra_hosts
+  hosts: semaphore_infra_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - deploy
     - security

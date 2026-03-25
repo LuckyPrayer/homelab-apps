@@ -16,8 +16,10 @@
 #   - Restic + B2 credentials configured via /opt/scripts/backup.env
 
 - name: Backup Homelab Apps
-  hosts: app_hosts
+  hosts: semaphore_app_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - backup
 

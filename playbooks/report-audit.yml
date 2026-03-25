@@ -13,8 +13,10 @@
 #   - Apps deployed (audit-containers.sh must exist on host)
 
 - name: Container Audit Report
-  hosts: app_hosts
+  hosts: semaphore_app_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - report
     - audit

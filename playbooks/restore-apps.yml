@@ -23,8 +23,10 @@
 #   - Restic snapshots available in B2 bucket
 
 - name: Restore Homelab Apps
-  hosts: app_hosts
+  hosts: semaphore_app_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - restore
 

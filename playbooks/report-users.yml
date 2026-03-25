@@ -20,8 +20,10 @@
 # Play 1: App hosts — use the homelab-apps role (manifest-aware)
 # =============================================================================
 - name: "User & Sudo Audit Report — App Hosts"
-  hosts: app_hosts
+  hosts: semaphore_app_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - report
     - users
@@ -59,8 +61,10 @@
 # Play 2: Infrastructure hosts — inline tasks (not in manifest.yml)
 # =============================================================================
 - name: "User & Sudo Audit Report — Infrastructure Hosts"
-  hosts: infra_hosts
+  hosts: semaphore_infra_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - report
     - users

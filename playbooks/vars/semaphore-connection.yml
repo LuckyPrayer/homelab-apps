@@ -1,0 +1,12 @@
+---
+# Semaphore Connection Settings
+#
+# Loaded via vars_files: in each playbook, giving these play-level
+# precedence (14) which overrides all inventory-level connection vars.
+#
+# Semaphore runs on hephaestus with host networking (inside the VLAN),
+# so no ProxyJump is needed to reach other VLAN hosts.
+
+ansible_user: semaphore-svc
+ansible_become: true
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'

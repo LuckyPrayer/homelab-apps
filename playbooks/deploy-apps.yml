@@ -16,8 +16,10 @@
 #   - Infisical CLI installed on target hosts (via homelab infra playbooks)
 
 - name: Deploy Homelab Apps
-  hosts: app_hosts
+  hosts: semaphore_app_hosts
   become: true
+  vars_files:
+    - vars/semaphore-connection.yml
   tags:
     - apps
     - homelab-apps

@@ -1,0 +1,22 @@
+# Cloned sub-repositories
+# homelab-inventory is cloned into inventories/ at deployment time
+inventories/
+
+# Ansible
+*.retry
+
+# Sensitive files
+*.vault
+*vault*.yml
+secrets.yml
+secrets/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

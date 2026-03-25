@@ -12,24 +12,11 @@
   ansible.builtin.set_fact:
     app_config: "{{ app_config_raw.content | b64decode | from_yaml if app_config_raw.content is defined else {} }}"
 
-- name: "{{ app_name }} - Check allowed_hosts"
-  ansible.builtin.set_fact:
-    _app_host_allowed: >-
-      {{
-        app_config.allowed_hosts is not defined
-        or app_config.allowed_hosts | length == 0
-        or inventory_hostname in app_config.allowed_hosts
-      }}
-
-- name: "{{ app_name }} - Skip deployment (host not in allowed_hosts)"
-  ansible.builtin.debug:
-    msg: >-
-      ✗ Skipping {{ app_name }}: {{ inventory_hostname }} is not in
-      allowed_hosts {{ app_config.allowed_hosts | default([]) }}
-  when: not _app_host_allowed | bool
+# Host-to-app gating is handled by manifest.yml (single source of truth).
+# The manifest determines which apps are passed to this task via the loop
+# in main.yml — no per-app allowed_hosts check is needed here.
 
 - name: "{{ app_name }} - Deploy app"
-  when: _app_host_allowed | bool
   block:
     - name: "{{ app_name }} - Check if {{ homelab_stacks_path | default('/opt/stacks') }}/{{ app_name }} exists"
       ansible.builtin.stat:

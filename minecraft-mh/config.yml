@@ -11,10 +11,6 @@ name: minecraft-mh
 description: Mental Hospital SMP - Production Minecraft server
 image: harbor.prod.thebozic.com/mc-server/minecraft-server:prod-latest
 
-# Host restriction - only deploy/backup/restore on these hosts
-allowed_hosts:
-  - orion-prod
-
 # Secrets from Infisical
 secrets:
   infisical_path: /services/minecraft/MH

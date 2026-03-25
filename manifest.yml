@@ -40,19 +40,11 @@ profiles:
     description: Discord bots and social integrations (Prod)
     apps:
       - timbot-tb
-  
-  media:
-    description: Media servers and management
-    apps:
-      - jellyfin
-      - audiobookshelf
-  
-  monitoring:
-    description: Monitoring and observability
-    apps:
-      - grafana
-      - prometheus
-      - node-exporter
+
+# NOTE: monitoring (Grafana, Prometheus, node-exporter) and media (Jellyfin,
+# Audiobookshelf) are deployed as infrastructure via the homelab repo's Ansible
+# roles, not through homelab-apps. Add profiles here only when migrating them
+# to app-managed deployments with their own config.yml + docker-compose.yml.
 
 # NOTE: uptime-kuma is deployed as infrastructure via Ansible (uptime-kuma role)
 # and is NOT managed through homelab-apps. See playbooks/deploy-pharos.yml.
@@ -114,14 +106,10 @@ hosts:
   hephaestus-prod:
     profiles:
       - core
-      - media
     apps: []
     exclude: []
     restore:
-      enabled: true
-      priority_order:
-        - jellyfin
-        - audiobookshelf
+      enabled: false
 
 # =============================================================================
 # GLOBAL SETTINGS

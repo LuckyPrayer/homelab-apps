@@ -6,10 +6,6 @@ description: Stardew Valley multiplayer server with VNC access
 version: "1.0.0"
 image: noenv/stardew-multiplayer-docker:latest
 
-# Host restriction - only deploy/backup/restore on these hosts
-allowed_hosts:
-  - orion-dev
-
 # Custom install path (standalone app)
 paths:
   compose_dir: "."

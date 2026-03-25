@@ -152,15 +152,9 @@ discover_apps() {
         local config_file="${app_dir}/config.yml"
         [[ ! -f "$config_file" ]] && continue
         
-        # Check allowed_hosts restriction (if set, current host must be in the list)
-        local allowed_hosts
-        allowed_hosts=$(yq -r '.allowed_hosts[]? // empty' "$config_file" 2>/dev/null || true)
-        if [[ -n "$allowed_hosts" ]]; then
-            if ! echo "$allowed_hosts" | grep -qxF "$(hostname)"; then
-                log_info "Skipping $app_name - not allowed on $(hostname)"
-                continue
-            fi
-        fi
+        # Host-to-app gating is handled by manifest.yml (single source of truth).
+        # Restore discovers apps from /opt/stacks symlinks created by deployment,
+        # so only deployed apps are restored — no per-app allowed_hosts needed.
         
         echo "$app_name"
     done | sort -u

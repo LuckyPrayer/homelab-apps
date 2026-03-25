@@ -11,13 +11,6 @@ name: homepage
 description: Modern dashboard for homelab services
 image: ghcr.io/gethomepage/homepage:latest
 
-# Host restriction - only deploy/backup/restore on these hosts
-allowed_hosts:
-  - orion-dev
-  - orion-prod
-  - hephaestus-dev
-  - hephaestus-prod
-
 # No secrets required (optional integrations only)
 secrets:
   infisical_path: null

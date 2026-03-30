@@ -1,6 +1,6 @@
 #!/bin/bash
 # Universal Container Backup Script (Config-Driven)
-# Backs up Docker containers/stacks using restic with Backblaze B2
+# Backs up Docker containers/stacks and syncs to Atlas backup server
 # Reads backup configuration from each app's config.yml
 #
 # Usage: backup.sh <app_name|all> [backup_type]
@@ -9,10 +9,10 @@
 #
 # Environment variables (from /opt/scripts/backup.env):
 #   BACKUP_DIR: Base directory for backups (default: /opt/backups)
-#   B2_BUCKET: Backblaze B2 bucket for offsite backup
-#   B2_ACCOUNT_ID: Backblaze B2 Application Key ID
-#   B2_ACCOUNT_KEY: Backblaze B2 Application Key
-#   RESTIC_PASSWORD: Password for restic repository encryption
+#   ATLAS_HOST: Atlas backup server hostname/IP
+#   ATLAS_USER: SSH user for Atlas connection
+#   ATLAS_SSH_KEY: Path to SSH private key for Atlas (default: /root/.ssh/atlas_backup)
+#   ATLAS_BACKUP_DIR: Remote backup directory on Atlas (default: /opt/backrest/data/backups)
 #   DISCORD_WEBHOOK_URL: Optional Discord webhook for notifications
 #   HOSTNAME_PREFIX: Prefix for backup paths (default: hostname)
 
@@ -24,6 +24,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPS_DIR="${APPS_DIR:-$(dirname "$SCRIPT_DIR")}"
+
+# Infrastructure stack config directory (deployed from homelab repo)
+INFRA_CONFIG_DIR="${INFRA_CONFIG_DIR:-/opt/infrastructure/backup-config}"
 
 # Source environment file if it exists
 if [[ -f /opt/scripts/backup.env ]]; then
@@ -38,13 +41,6 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 HOSTNAME_PREFIX="${HOSTNAME_PREFIX:-$(hostname)}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 START_TIME=$(date +%s)
-
-# Ensure restic uses disk storage
-export TMPDIR="${BACKUP_DIR}"
-
-# Timeout settings
-RESTIC_TIMEOUT="${RESTIC_TIMEOUT:-1800}"
-LOCK_TIMEOUT="${LOCK_TIMEOUT:-300}"
 
 # =============================================================================
 # Colors and Logging
@@ -78,15 +74,26 @@ check_yq() {
     fi
 }
 
-# Get value from app config.yml
+# Find config.yml for an app/stack (checks APPS_DIR then INFRA_CONFIG_DIR)
+find_config_file() {
+    local app_name="$1"
+    if [[ -f "$APPS_DIR/$app_name/config.yml" ]]; then
+        echo "$APPS_DIR/$app_name/config.yml"
+    elif [[ -f "$INFRA_CONFIG_DIR/$app_name/config.yml" ]]; then
+        echo "$INFRA_CONFIG_DIR/$app_name/config.yml"
+    fi
+}
+
+# Get value from app/stack config.yml
 # Usage: get_config app_name ".key.path" "default_value"
 get_config() {
     local app_name="$1"
     local key="$2"
     local default="${3:-}"
     
-    local config_file="$APPS_DIR/$app_name/config.yml"
-    if [[ ! -f "$config_file" ]]; then
+    local config_file
+    config_file=$(find_config_file "$app_name")
+    if [[ -z "$config_file" ]]; then
         echo "$default"
         return
     fi
@@ -108,8 +115,9 @@ get_config_array() {
     local app_name="$1"
     local key="$2"
     
-    local config_file="$APPS_DIR/$app_name/config.yml"
-    if [[ ! -f "$config_file" ]]; then
+    local config_file
+    config_file=$(find_config_file "$app_name")
+    if [[ -z "$config_file" ]]; then
         return
     fi
     
@@ -120,24 +128,28 @@ get_config_array() {
 # App Discovery Functions
 # =============================================================================
 
-# Discover all apps with backup enabled
+# Discover all apps/stacks with backup enabled
+# Scans both APPS_DIR (homelab-apps) and INFRA_CONFIG_DIR (infrastructure stacks)
 discover_backup_apps() {
     local apps=()
     
+    # Scan application stacks (homelab-apps)
     for app_dir in "$APPS_DIR"/*/; do
         [[ ! -d "$app_dir" ]] && continue
         
         local app_name
         app_name=$(basename "$app_dir")
         
-        # Skip scripts directory
-        [[ "$app_name" == "scripts" ]] && continue
+        # Skip scripts/playbooks/roles directories
+        [[ "$app_name" == "scripts" || "$app_name" == "playbooks" || "$app_name" == "roles" || "$app_name" == "inventories" ]] && continue
+        
+        # Skip renamed/archived directories (contain .old.)
+        [[ "$app_name" == *.old.* ]] && continue
         
         # Check for config.yml
-        local config_file="${app_dir}/config.yml"
-        [[ ! -f "$config_file" ]] && continue
+        [[ ! -f "${app_dir}/config.yml" ]] && continue
         
-        # Check for docker-compose.yml
+        # Check for docker-compose.yml (apps must have a compose file)
         if [[ ! -f "${app_dir}/docker-compose.yml" ]] && [[ ! -f "${app_dir}/docker-compose.yaml" ]]; then
             continue
         fi
@@ -147,12 +159,35 @@ discover_backup_apps() {
         backup_enabled=$(get_config "$app_name" ".backup.enabled" "true")
         [[ "$backup_enabled" != "true" ]] && continue
         
-        # Host-to-app gating is handled by manifest.yml (single source of truth).
-        # Backup discovers apps from /opt/stacks symlinks created by deployment,
-        # so only deployed apps are backed up — no per-app allowed_hosts needed.
-        
         apps+=("$app_name")
     done
+    
+    # Scan infrastructure stacks (config-only, compose lives at install_path)
+    if [[ -d "$INFRA_CONFIG_DIR" ]]; then
+        for stack_dir in "$INFRA_CONFIG_DIR"/*/; do
+            [[ ! -d "$stack_dir" ]] && continue
+            
+            local stack_name
+            stack_name=$(basename "$stack_dir")
+            
+            [[ "$stack_name" == *.old.* ]] && continue
+            [[ ! -f "${stack_dir}/config.yml" ]] && continue
+            
+            # Check if backup is enabled (default: true)
+            local backup_enabled
+            backup_enabled=$(get_config "$stack_name" ".backup.enabled" "true")
+            [[ "$backup_enabled" != "true" ]] && continue
+            
+            # Verify install_path exists on this host (stack is actually deployed here)
+            local install_path
+            install_path=$(get_config "$stack_name" ".paths.install_path" "")
+            if [[ -n "$install_path" ]] && [[ ! -d "$install_path" ]]; then
+                continue  # Stack not deployed on this host
+            fi
+            
+            apps+=("$stack_name")
+        done
+    fi
     
     printf '%s\n' "${apps[@]}" | sort -u
 }
@@ -424,6 +459,24 @@ backup_app_database() {
                 log_warn "MariaDB/MySQL backup failed"
         fi
     fi
+    
+    # Redis (RDB dump)
+    if docker compose ps 2>/dev/null | grep -q redis; then
+        log_info "Backing up Redis data..."
+        local redis_container
+        redis_container=$(docker compose ps -q redis 2>/dev/null | head -1)
+        if [[ -n "$redis_container" ]]; then
+            local db_backup="$app_backup_dir/${app_name}_redis_${TIMESTAMP}.rdb"
+            docker exec "$redis_container" redis-cli BGSAVE 2>/dev/null || true
+            sleep 2
+            docker exec "$redis_container" cat /data/dump.rdb 2>/dev/null > "$db_backup" || true
+            if [[ -s "$db_backup" ]]; then
+                log_info "Redis backup created: $db_backup"
+            else
+                rm -f "$db_backup"
+            fi
+        fi
+    fi
 }
 
 # Cleanup old local backups
@@ -432,63 +485,66 @@ cleanup_old_backups() {
     
     log_info "Cleaning up old backups in $app_backup_dir..."
     
-    # Keep only current backup (restic handles versioning)
+    # Keep only files from current timestamp (Atlas/Backrest handles versioning)
     find "$app_backup_dir" -name "*.tar.gz" ! -name "*_${TIMESTAMP}*" -delete 2>/dev/null || true
     find "$app_backup_dir" -name "*.sql.gz" ! -name "*_${TIMESTAMP}*" -delete 2>/dev/null || true
     find "$app_backup_dir" -name "*.archive.gz" ! -name "*_${TIMESTAMP}*" -delete 2>/dev/null || true
+    find "$app_backup_dir" -name "*.rdb" ! -name "*_${TIMESTAMP}*" -delete 2>/dev/null || true
 }
 
-# Sync to B2 using restic
-sync_to_b2() {
+# Sync backups to Atlas backup server via rsync
+# Atlas runs Backrest which manages B2 uploads
+sync_to_atlas() {
     local app_name="$1"
     local app_backup_dir="$BACKUP_DIR/$app_name"
-    
-    if [[ -z "${B2_BUCKET:-}" ]] || [[ -z "${B2_ACCOUNT_ID:-}" ]] || \
-       [[ -z "${B2_ACCOUNT_KEY:-}" ]] || [[ -z "${RESTIC_PASSWORD:-}" ]]; then
-        log_warn "B2 credentials not set, skipping remote sync"
-        return 0
+
+    if [[ -z "${ATLAS_HOST:-}" ]] || [[ -z "${ATLAS_USER:-}" ]]; then
+        log_warn "Atlas backup not configured (missing ATLAS_HOST or ATLAS_USER)"
+        log_warn "Local backups retained but NOT synced offsite"
+        return 1
     fi
-    
-    log_info "Syncing to Backblaze B2: $B2_BUCKET"
-    
-    export RESTIC_REPOSITORY="b2:${B2_BUCKET}:${HOSTNAME_PREFIX}"
-    export RESTIC_PASSWORD="${RESTIC_PASSWORD}"
-    export B2_ACCOUNT_ID="${B2_ACCOUNT_ID}"
-    export B2_ACCOUNT_KEY="${B2_ACCOUNT_KEY}"
-    
-    # Initialize repo if needed
-    if ! timeout 60 restic snapshots &>/dev/null 2>&1; then
-        log_info "Initializing restic repository..."
-        restic init 2>&1 || {
-            log_error "Failed to initialize restic repository"
-            return 1
-        }
+
+    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o BatchMode=yes"
+    if [[ -n "${ATLAS_SSH_KEY:-}" ]] && [[ -f "${ATLAS_SSH_KEY}" ]]; then
+        ssh_opts="${ssh_opts} -i ${ATLAS_SSH_KEY}"
     fi
-    
-    # Clear stale locks
-    restic unlock 2>/dev/null || true
-    
-    # Backup with tags
-    log_info "Running restic backup..."
-    timeout "${RESTIC_TIMEOUT}" restic backup "$app_backup_dir" \
-        --tag "$app_name" \
-        --tag "homelab-apps" \
-        --host "$HOSTNAME_PREFIX" \
-        --exclude-caches 2>&1 || {
-            log_error "Restic backup failed for $app_name"
-            return 1
-        }
-    
-    # Apply retention policy
-    log_info "Applying retention policy..."
-    restic forget \
-        --tag "$app_name" \
-        --keep-daily 7 \
-        --keep-weekly 4 \
-        --keep-monthly 3 \
-        --prune 2>&1 || log_warn "Retention policy failed (non-fatal)"
-    
-    log_info "B2 sync completed for $app_name"
+
+    local atlas_dest="${ATLAS_BACKUP_DIR:-/opt/backrest/data/backups}/${HOSTNAME_PREFIX}/${app_name}/"
+
+    log_info "Syncing backups to Atlas: ${ATLAS_USER}@${ATLAS_HOST}:${atlas_dest}"
+
+    # Test connectivity
+    if ! ssh ${ssh_opts} "${ATLAS_USER}@${ATLAS_HOST}" "echo ok" &>/dev/null; then
+        log_error "Cannot connect to Atlas (${ATLAS_HOST})"
+        send_discord_notification "${app_name}" "⚠️ Cannot connect to Atlas backup server (${ATLAS_HOST}) for ${app_name} on ${HOSTNAME_PREFIX}" "warning"
+        return 1
+    fi
+
+    # Create remote directory
+    ssh ${ssh_opts} "${ATLAS_USER}@${ATLAS_HOST}" "mkdir -p '${atlas_dest}'" 2>&1 || {
+        log_error "Failed to create directory on Atlas"
+        return 1
+    }
+
+    # Rsync backup files to Atlas (--delete removes old files on Atlas)
+    if rsync -avz --delete \
+        -e "ssh ${ssh_opts}" \
+        "${app_backup_dir}/" \
+        "${ATLAS_USER}@${ATLAS_HOST}:${atlas_dest}" 2>&1; then
+
+        log_info "Backups synced to Atlas successfully"
+
+        # Show what was synced
+        local file_count
+        file_count=$(find "${app_backup_dir}" -type f | wc -l)
+        local total_size
+        total_size=$(du -sh "${app_backup_dir}" 2>/dev/null | cut -f1)
+        log_info "Synced ${file_count} files (${total_size}) to Atlas"
+    else
+        log_error "Failed to rsync backups to Atlas"
+        send_discord_notification "${app_name}" "⚠️ Failed to sync ${app_name} backups to Atlas (${ATLAS_HOST}) from ${HOSTNAME_PREFIX}" "warning"
+        return 1
+    fi
 }
 
 # Send Discord notification
@@ -503,7 +559,7 @@ send_discord_notification() {
     case "$level" in
         success) color="3066993" ;;  # Green
         error)   color="15158332" ;; # Red
-        warning) color="15844367" ;; # Orange
+        warning) color="15105570" ;; # Orange
         *)       color="3447003" ;;  # Blue
     esac
     
@@ -511,10 +567,14 @@ send_discord_notification() {
     payload=$(cat <<EOF
 {
     "embeds": [{
-        "title": "📦 Backup: ${app_name}",
+        "title": "🗄️ Backup Notification",
         "description": "${message}",
         "color": ${color},
-        "footer": {"text": "Host: ${HOSTNAME_PREFIX}"},
+        "fields": [
+            {"name": "Host", "value": "${HOSTNAME_PREFIX}", "inline": true},
+            {"name": "Stack", "value": "${app_name}", "inline": true},
+            {"name": "Type", "value": "${BACKUP_TYPE}", "inline": true}
+        ],
         "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     }]
 }
@@ -574,24 +634,29 @@ backup_app() {
     # Cleanup old backups
     cleanup_old_backups "$app_backup_dir"
     
-    # Sync to B2
-    sync_to_b2 "$app_name" || backup_success=false
+    # Sync to Atlas backup server
+    sync_to_atlas "$app_name" || backup_success=false
+    
+    # List created backup files for notification
+    local backup_files
+    backup_files=$(ls -lh "${app_backup_dir}"/*_${TIMESTAMP}* 2>/dev/null | awk '{print $NF": "$5}' | tr '\n' ', ' | sed 's/, $//')
     
     if [[ "$backup_success" == "true" ]]; then
         log_info "✅ Backup completed for $app_name"
-        send_discord_notification "$app_name" "✅ Backup completed successfully" "success"
+        send_discord_notification "$app_name" "✅ Backup completed successfully\\n\\n**Files:** ${backup_files:-none}" "success"
         return 0
     else
         log_error "❌ Backup failed for $app_name"
-        send_discord_notification "$app_name" "❌ Backup failed" "error"
+        send_discord_notification "$app_name" "❌ Backup failed\\n\\n**Files:** ${backup_files:-none}" "error"
         return 1
     fi
 }
 
 backup_all() {
-    log_header "Backing up ALL apps"
+    log_header "Backing up ALL apps & stacks"
     log_info "Host: $HOSTNAME_PREFIX"
     log_info "Apps directory: $APPS_DIR"
+    log_info "Infra config directory: $INFRA_CONFIG_DIR"
     
     send_discord_notification "all" "🚀 Starting backup of all apps on ${HOSTNAME_PREFIX}" "info"
     
@@ -632,8 +697,9 @@ backup_all() {
 }
 
 list_apps() {
-    log_header "Discovered Apps"
+    log_header "Discovered Apps & Stacks"
     log_info "Apps directory: $APPS_DIR"
+    log_info "Infra config directory: $INFRA_CONFIG_DIR"
     echo ""
     
     local count=0
@@ -646,60 +712,59 @@ list_apps() {
         local hot_backup
         hot_backup=$(get_config "$app_name" ".hot_backup" "false")
         
+        local source="app"
+        [[ -f "$INFRA_CONFIG_DIR/$app_name/config.yml" ]] && source="infra"
+        
         local status=""
         [[ "$hot_backup" == "true" ]] && status=" (hot backup)"
         
-        echo "  📦 $app_name"
+        echo "  📦 $app_name [$source]"
         echo "     → $compose_dir$status"
         
         ((count++))
     done < <(discover_backup_apps)
     
     echo ""
-    log_info "Total apps: $count"
+    log_info "Total: $count"
 }
 
 show_help() {
     cat <<EOF
 Universal Container Backup Script (Config-Driven)
-Reads backup configuration from each app's config.yml
+Backs up apps and infrastructure stacks, syncs to Atlas backup server.
+Reads backup configuration from each app/stack's config.yml.
 
 Usage: $(basename "$0") <app_name|all|list|help>
 
 Commands:
-  <app_name>    Backup specific app
-  all           Backup all discovered apps
-  list          List all apps with backup enabled
+  <app_name>    Backup specific app or infrastructure stack
+  all           Backup all discovered apps and stacks
+  list          List all apps/stacks with backup enabled
   help          Show this help
 
 Environment Variables (from /opt/scripts/backup.env):
-  B2_BUCKET             Backblaze B2 bucket name
-  B2_ACCOUNT_ID         Backblaze B2 Application Key ID
-  B2_ACCOUNT_KEY        Backblaze B2 Application Key
-  RESTIC_PASSWORD       Restic repository encryption password
+  ATLAS_HOST            Atlas backup server hostname/IP
+  ATLAS_USER            SSH user for Atlas connection (default: root)
+  ATLAS_SSH_KEY         Path to SSH private key for Atlas
+  ATLAS_BACKUP_DIR      Remote backup directory on Atlas
   DISCORD_WEBHOOK_URL   Optional Discord webhook for notifications
   HOSTNAME_PREFIX       Prefix for backup paths (default: hostname)
   APPS_DIR              Apps directory (default: parent of scripts/)
+  INFRA_CONFIG_DIR      Infrastructure stack configs (default: /opt/infrastructure/backup-config)
 
-App config.yml Example:
-  backup:
-    enabled: true
-    paths:
-      - ./data
-      - ./config
-    stop_during_backup: true
-    exclude:
-      - "*.log"
-    pre_backup: "docker exec myapp flush"
-  hot_backup: false  # true for critical services (traefik, pihole)
+Config Sources:
+  Apps:  \${APPS_DIR}/<app>/config.yml     (homelab-apps repo)
+  Infra: \${INFRA_CONFIG_DIR}/<stack>/config.yml (homelab repo)
 
 Examples:
-  $(basename "$0") vaultwarden    # Backup vaultwarden
-  $(basename "$0") all            # Backup all apps
-  $(basename "$0") list           # List available apps
+  $(basename "$0") vaultwarden    # Backup vaultwarden app
+  $(basename "$0") harbor         # Backup harbor infra stack
+  $(basename "$0") all            # Backup everything
+  $(basename "$0") list           # List available apps/stacks
 
 Host: ${HOSTNAME_PREFIX}
 Apps: ${APPS_DIR}
+Infra: ${INFRA_CONFIG_DIR}
 EOF
 }
 
@@ -721,10 +786,12 @@ main() {
             backup_all
             ;;
         *)
-            # Check if app exists
-            if [[ ! -d "$APPS_DIR/$APP_NAME" ]]; then
-                log_error "App not found: $APP_NAME"
-                log_info "Use 'list' to see available apps"
+            # Check if app/stack exists in either config directory
+            local config_file
+            config_file=$(find_config_file "$APP_NAME")
+            if [[ -z "$config_file" ]]; then
+                log_error "App/stack not found: $APP_NAME"
+                log_info "Use 'list' to see available apps and stacks"
                 exit 1
             fi
             backup_app "$APP_NAME"

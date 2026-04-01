@@ -668,9 +668,9 @@ backup_all() {
         [[ -z "$app_name" ]] && continue
         
         if backup_app "$app_name"; then
-            ((total_success++))
+            ((total_success++)) || true
         else
-            ((total_failed++))
+            ((total_failed++)) || true
             failed_apps+=" $app_name"
         fi
     done < <(discover_backup_apps)
@@ -721,7 +721,7 @@ list_apps() {
         echo "  📦 $app_name [$source]"
         echo "     → $compose_dir$status"
         
-        ((count++))
+        ((count++)) || true
     done < <(discover_backup_apps)
     
     echo ""

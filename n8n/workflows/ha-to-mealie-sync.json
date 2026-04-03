@@ -1,0 +1,594 @@
+{
+  "name": "Shopping List - Home Assistant → Mealie",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ha-shopping-sync",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000001",
+      "name": "HA Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 340],
+      "webhookId": "ha-shopping-sync"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "source-check",
+              "leftValue": "={{ $json.body?.source }}",
+              "rightValue": "n8n",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "name-check",
+              "leftValue": "={{ $json.body?.item_name ?? '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000002",
+      "name": "Skip Loop & Empty",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and normalize the HA event payload\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst action = (body.action ?? '').toLowerCase();\nconst itemName = (body.item_name ?? '').trim();\nconst itemComplete = body.item_complete === true || body.item_complete === 'true' || body.item_complete === 'True';\n\nreturn [{ json: { action, itemName, itemComplete } }];"
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000003",
+      "name": "Parse HA Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 340]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Add"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Update"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "remove",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Remove"
+            }
+          ],
+          "fallbackOutput": {
+            "type": "extra",
+            "output": -1
+          }
+        },
+        "options": {}
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000004",
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [900, 340]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/lists",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000005",
+      "name": "Get Mealie Lists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the first shopping list ID from Mealie\nconst response = $input.first().json;\nconst lists = response.items ?? response.data ?? response;\n\nlet listId = '';\nif (Array.isArray(lists) && lists.length > 0) {\n  listId = lists[0].id;\n} else if (response.id) {\n  listId = response.id;\n}\n\n// Carry forward the item name from the HA webhook\nconst prevData = $('Parse HA Payload').first().json;\n\nreturn [{ json: { listId, itemName: prevData.itemName } }];"
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000006",
+      "name": "Extract List ID - Add",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1380, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  shopping_list_id: $json.listId,\n  note: $json.itemName,\n  checked: false,\n  extras: { synced_from: 'homeassistant' }\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000007",
+      "name": "Mealie - Create Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1620, 180],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "perPage",
+              "value": "-1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000008",
+      "name": "Fetch All Mealie Items - Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the Mealie item matching the HA item name\nconst response = $input.first().json;\nconst items = response.items ?? response.data ?? response;\nconst prevData = $('Parse HA Payload').first().json;\nconst targetName = prevData.itemName.toLowerCase().trim();\nconst isComplete = prevData.itemComplete;\n\nlet matchedItem = null;\n\nif (Array.isArray(items)) {\n  matchedItem = items.find(item => {\n    const note = (item.note ?? '').toLowerCase().trim();\n    const foodName = (item.food?.name ?? '').toLowerCase().trim();\n    const display = (item.display ?? '').toLowerCase().trim();\n    return note === targetName || foodName === targetName || display === targetName;\n  });\n}\n\nif (matchedItem) {\n  return [{ json: { itemId: matchedItem.id, checked: isComplete, found: true } }];\n} else {\n  return [{ json: { found: false, itemName: prevData.itemName } }];\n}"
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000009",
+      "name": "Find Mealie Item - Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1380, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "found-check",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000010",
+      "name": "Item Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1620, 340]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items/{{ $json.itemId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  checked: $json.checked,\n  extras: { synced_from: 'homeassistant' }\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000011",
+      "name": "Mealie - Update Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1860, 280],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "perPage",
+              "value": "-1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000012",
+      "name": "Fetch All Mealie Items - Remove",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the Mealie item matching the HA item to delete\nconst response = $input.first().json;\nconst items = response.items ?? response.data ?? response;\nconst prevData = $('Parse HA Payload').first().json;\nconst targetName = prevData.itemName.toLowerCase().trim();\n\nlet matchedItem = null;\n\nif (Array.isArray(items)) {\n  matchedItem = items.find(item => {\n    const note = (item.note ?? '').toLowerCase().trim();\n    const foodName = (item.food?.name ?? '').toLowerCase().trim();\n    const display = (item.display ?? '').toLowerCase().trim();\n    return note === targetName || foodName === targetName || display === targetName;\n  });\n}\n\nif (matchedItem) {\n  return [{ json: { itemId: matchedItem.id, found: true } }];\n} else {\n  return [{ json: { found: false, itemName: prevData.itemName } }];\n}"
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000013",
+      "name": "Find Mealie Item - Remove",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1380, 520]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "found-check-del",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000014",
+      "name": "Item Found? (Delete)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1620, 520]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items/{{ $json.itemId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000015",
+      "name": "Mealie - Delete Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1860, 460],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "content": "## Shopping List — Home Assistant → Mealie\n\nListens for HA shopping list events (via HA automation + REST command)\nand pushes changes to Mealie's shopping list.\n\n**Webhook:** POST /webhook/ha-shopping-sync\n\n**HA setup required:**\n1. Add `rest_command` to `configuration.yaml`\n2. Add automation triggered by `shopping_list_updated` event\n   (see plan doc for YAML examples)\n\n**Expected payload:**\n```json\n{\n  \"action\": \"add|update|remove\",\n  \"item_name\": \"Milk\",\n  \"item_complete\": false,\n  \"source\": \"homeassistant\"\n}\n```\n\n**Environment variables used:**\n- `MEALIE_URL` — Mealie base URL\n- `MEALIE_API_TOKEN` — Mealie Long-Lived API Token\n\n**Loop prevention:**\n- Payloads with `source: \"n8n\"` are skipped\n- Created items get `extras.synced_from = \"homeassistant\"`",
+        "width": 480,
+        "height": 520
+      },
+      "id": "c1d2e3f4-0020-4000-a000-000000000099",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, -200]
+    }
+  ],
+  "connections": {
+    "HA Webhook": {
+      "main": [
+        [
+          {
+            "node": "Skip Loop & Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Loop & Empty": {
+      "main": [
+        [
+          {
+            "node": "Parse HA Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse HA Payload": {
+      "main": [
+        [
+          {
+            "node": "Route by Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "Get Mealie Lists",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch All Mealie Items - Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch All Mealie Items - Remove",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Mealie Lists": {
+      "main": [
+        [
+          {
+            "node": "Extract List ID - Add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract List ID - Add": {
+      "main": [
+        [
+          {
+            "node": "Mealie - Create Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Mealie Items - Update": {
+      "main": [
+        [
+          {
+            "node": "Find Mealie Item - Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Mealie Item - Update": {
+      "main": [
+        [
+          {
+            "node": "Item Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item Found?": {
+      "main": [
+        [
+          {
+            "node": "Mealie - Update Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Mealie Items - Remove": {
+      "main": [
+        [
+          {
+            "node": "Find Mealie Item - Remove",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Mealie Item - Remove": {
+      "main": [
+        [
+          {
+            "node": "Item Found? (Delete)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item Found? (Delete)": {
+      "main": [
+        [
+          {
+            "node": "Mealie - Delete Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "versionId": "1",
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "shopping-list"
+    },
+    {
+      "name": "mealie"
+    },
+    {
+      "name": "home-assistant"
+    }
+  ]
+}

@@ -1,0 +1,452 @@
+{
+  "name": "Shopping List - Mealie → Home Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mealie-shopping-sync",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000001",
+      "name": "Mealie Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 340],
+      "webhookId": "mealie-shopping-sync"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "loop-check",
+              "leftValue": "={{ $json.body?.extras?.synced_from }}",
+              "rightValue": "n8n",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000002",
+      "name": "Skip If Synced By Us",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 340]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body?.integration_id ?? $json.body?.event_type ?? '' }}",
+                    "rightValue": "shopping_list_item.created",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Item Created"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body?.integration_id ?? $json.body?.event_type ?? '' }}",
+                    "rightValue": "shopping_list_item.updated",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Item Updated"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body?.integration_id ?? $json.body?.event_type ?? '' }}",
+                    "rightValue": "shopping_list_item.deleted",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Item Deleted"
+            }
+          ],
+          "fallbackOutput": {
+            "type": "extra",
+            "output": -1
+          }
+        },
+        "options": {}
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000003",
+      "name": "Route by Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [700, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract item details from Mealie webhook payload\nconst body = $input.first().json.body ?? $input.first().json;\n\n// Mealie shopping list item fields\nconst note = body.note ?? body.item?.note ?? body.display ?? body.item?.display ?? '';\nconst foodName = body.food?.name ?? body.item?.food?.name ?? '';\nconst quantity = body.quantity ?? body.item?.quantity ?? '';\nconst unit = body.unit?.name ?? body.item?.unit?.name ?? '';\n\n// Build a readable item name\nlet itemName = '';\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? ` ${unit}` : '';\n    itemName = `${quantity}${unitStr} ${foodName}`;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = 'Unknown item';\n}\n\nreturn [{ json: { itemName: itemName.trim() } }];"
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000004",
+      "name": "Extract Item - Add",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/add_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.itemName }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000005",
+      "name": "HA - Add Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 180],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract item details from Mealie webhook payload for update\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst note = body.note ?? body.item?.note ?? body.display ?? body.item?.display ?? '';\nconst foodName = body.food?.name ?? body.item?.food?.name ?? '';\nconst quantity = body.quantity ?? body.item?.quantity ?? '';\nconst unit = body.unit?.name ?? body.item?.unit?.name ?? '';\nconst checked = body.checked ?? body.item?.checked ?? false;\n\nlet itemName = '';\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? ` ${unit}` : '';\n    itemName = `${quantity}${unitStr} ${foodName}`;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = 'Unknown item';\n}\n\nreturn [{ json: { itemName: itemName.trim(), checked: checked } }];"
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000006",
+      "name": "Extract Item - Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "checked-bool",
+              "leftValue": "={{ $json.checked }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000007",
+      "name": "Is Checked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1200, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/complete_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.itemName }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000008",
+      "name": "HA - Complete Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 260],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/incomplete_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.itemName }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000009",
+      "name": "HA - Incomplete Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 420],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract item name from Mealie delete event\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst note = body.note ?? body.item?.note ?? body.display ?? body.item?.display ?? '';\nconst foodName = body.food?.name ?? body.item?.food?.name ?? '';\nconst quantity = body.quantity ?? body.item?.quantity ?? '';\nconst unit = body.unit?.name ?? body.item?.unit?.name ?? '';\n\nlet itemName = '';\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? ` ${unit}` : '';\n    itemName = `${quantity}${unitStr} ${foodName}`;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = 'Unknown item';\n}\n\nreturn [{ json: { itemName: itemName.trim() } }];"
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000010",
+      "name": "Extract Item - Delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 520]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/remove_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.itemName }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000011",
+      "name": "HA - Remove Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 520],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "content": "## Shopping List — Mealie → Home Assistant\n\nListens for Mealie event notifications (shopping list item changes)\nand pushes them to the Home Assistant Shopping List integration.\n\n**Webhook:** POST /webhook/mealie-shopping-sync\n\n**Mealie setup required:**\n- Household Settings → Notifications → Create\n- URL: `https://n8n.<env>.thebozic.com/webhook/mealie-shopping-sync`\n- Events: `shopping_list_item.created`, `.updated`, `.deleted`\n\n**Environment variables used:**\n- `HA_URL` — Home Assistant base URL\n- `HOMEASSISTANT_API_TOKEN` — HA Long-Lived Access Token\n\n**Loop prevention:**\n- Items with `extras.synced_from = \"n8n\"` are skipped",
+        "width": 480,
+        "height": 380
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000099",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, -140]
+    }
+  ],
+  "connections": {
+    "Mealie Webhook": {
+      "main": [
+        [
+          {
+            "node": "Skip If Synced By Us",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip If Synced By Us": {
+      "main": [
+        [
+          {
+            "node": "Route by Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Event Type": {
+      "main": [
+        [
+          {
+            "node": "Extract Item - Add",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Item - Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Item - Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Item - Add": {
+      "main": [
+        [
+          {
+            "node": "HA - Add Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Item - Update": {
+      "main": [
+        [
+          {
+            "node": "Is Checked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Checked?": {
+      "main": [
+        [
+          {
+            "node": "HA - Complete Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HA - Incomplete Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Item - Delete": {
+      "main": [
+        [
+          {
+            "node": "HA - Remove Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "versionId": "1",
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "shopping-list"
+    },
+    {
+      "name": "mealie"
+    },
+    {
+      "name": "home-assistant"
+    }
+  ]
+}

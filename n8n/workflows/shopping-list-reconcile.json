@@ -1,0 +1,611 @@
+{
+  "name": "Shopping List - Reconciliation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000001",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 340]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "perPage",
+              "value": "-1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000002",
+      "name": "Fetch Mealie Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 240],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/todo/get_items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"entity_id\": \"todo.shopping_list\",\n  \"status\": [\"needs_action\", \"completed\"]\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000003",
+      "name": "Fetch HA Shopping List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 440],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge results from both API calls and compute the diff\nconst mealieResponse = $('Fetch Mealie Items').first().json;\nconst haResponse = $('Fetch HA Shopping List').first().json;\n\n// Parse Mealie items\nconst mealieRawItems = mealieResponse.items ?? mealieResponse.data ?? [];\nconst mealieItems = mealieRawItems.map(item => {\n  const note = (item.note ?? '').trim();\n  const foodName = (item.food?.name ?? '').trim();\n  const display = (item.display ?? '').trim();\n  const name = foodName || note || display || 'Unknown';\n  return {\n    id: item.id,\n    name: name,\n    nameNorm: name.toLowerCase(),\n    checked: item.checked ?? false,\n    source: 'mealie'\n  };\n});\n\n// Parse HA items\n// HA returns: { \"todo.shopping_list\": { \"items\": [...] } }\nlet haItems = [];\nconst haData = haResponse['todo.shopping_list'] ?? haResponse;\nconst haRawItems = haData?.items ?? haData ?? [];\nif (Array.isArray(haRawItems)) {\n  haItems = haRawItems.map(item => ({\n    uid: item.uid ?? '',\n    name: (item.summary ?? item.name ?? '').trim(),\n    nameNorm: (item.summary ?? item.name ?? '').trim().toLowerCase(),\n    completed: (item.status === 'completed'),\n    source: 'ha'\n  }));\n}\n\n// Build lookup sets\nconst mealieNames = new Set(mealieItems.map(i => i.nameNorm));\nconst haNames = new Set(haItems.map(i => i.nameNorm));\n\n// Items in Mealie but not in HA → need to add to HA\nconst addToHA = mealieItems\n  .filter(i => !haNames.has(i.nameNorm) && i.nameNorm !== 'unknown')\n  .map(i => ({ name: i.name, checked: i.checked }));\n\n// Items in HA but not in Mealie → need to add to Mealie\nconst addToMealie = haItems\n  .filter(i => !mealieNames.has(i.nameNorm))\n  .map(i => ({ name: i.name, completed: i.completed }));\n\n// Status mismatches (item exists in both but status differs)\nconst statusMismatches = [];\nfor (const mi of mealieItems) {\n  const haMatch = haItems.find(hi => hi.nameNorm === mi.nameNorm);\n  if (haMatch) {\n    const mealieChecked = mi.checked;\n    const haCompleted = haMatch.completed;\n    if (mealieChecked !== haCompleted) {\n      // Mealie is source of truth for status\n      statusMismatches.push({\n        name: mi.name,\n        mealieChecked: mealieChecked,\n        haCompleted: haCompleted,\n        mealieId: mi.id,\n        haUid: haMatch.uid\n      });\n    }\n  }\n}\n\nreturn [{\n  json: {\n    addToHA,\n    addToMealie,\n    statusMismatches,\n    stats: {\n      mealieCount: mealieItems.length,\n      haCount: haItems.length,\n      toAddToHA: addToHA.length,\n      toAddToMealie: addToMealie.length,\n      mismatches: statusMismatches.length\n    }\n  }\n}];"
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000004",
+      "name": "Diff & Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [740, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-changes",
+              "leftValue": "={{ $json.stats.toAddToHA + $json.stats.toAddToMealie + $json.stats.mismatches }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000005",
+      "name": "Has Changes?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [980, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split into individual operations for batch processing\nconst data = $input.first().json;\nconst operations = [];\n\n// Items to add to HA\nfor (const item of data.addToHA) {\n  operations.push({\n    target: 'ha',\n    action: 'add',\n    name: item.name,\n    checked: item.checked\n  });\n}\n\n// Items to add to Mealie\nfor (const item of data.addToMealie) {\n  operations.push({\n    target: 'mealie',\n    action: 'add',\n    name: item.name,\n    completed: item.completed\n  });\n}\n\n// Status mismatches — update HA to match Mealie (source of truth)\nfor (const item of data.statusMismatches) {\n  operations.push({\n    target: 'ha',\n    action: item.mealieChecked ? 'complete' : 'incomplete',\n    name: item.name\n  });\n}\n\nif (operations.length === 0) {\n  return [{ json: { message: 'No operations needed' } }];\n}\n\nreturn operations.map(op => ({ json: op }));"
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000006",
+      "name": "Build Operations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 260]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target }}",
+                    "rightValue": "ha",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Add to HA"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target }}",
+                    "rightValue": "mealie",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Add to Mealie"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target }}",
+                    "rightValue": "ha",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Complete in HA"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target }}",
+                    "rightValue": "ha",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "incomplete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": "Incomplete in HA"
+            }
+          ],
+          "fallbackOutput": {
+            "type": "extra",
+            "output": -1
+          }
+        },
+        "options": {}
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000007",
+      "name": "Route Operations",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1460, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/add_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.name }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000008",
+      "name": "HA - Add Missing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1720, 80],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/lists",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000009",
+      "name": "Get Mealie List ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1720, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get list ID and carry forward the item to create\nconst response = $input.first().json;\nconst lists = response.items ?? response.data ?? response;\nlet listId = '';\nif (Array.isArray(lists) && lists.length > 0) {\n  listId = lists[0].id;\n}\n\n// Get the pending operation from the previous switch node output\nconst prevItem = $('Route Operations').first().json;\n\nreturn [{ json: { listId, name: prevItem.name, completed: prevItem.completed ?? false } }];"
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000010",
+      "name": "Prep Mealie Add",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1960, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  shopping_list_id: $json.listId,\n  note: $json.name,\n  checked: $json.completed,\n  extras: { synced_from: 'homeassistant' }\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000011",
+      "name": "Mealie - Add Missing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 240],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/complete_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.name }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000012",
+      "name": "HA - Complete Mismatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1720, 400],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/shopping_list/incomplete_item",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.name }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000013",
+      "name": "HA - Incomplete Mismatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1720, 560],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "content": "## Shopping List — Periodic Reconciliation\n\nRuns every 15 minutes to catch missed events and keep\nMealie and Home Assistant shopping lists in sync.\n\n**Flow:**\n1. Fetch ALL items from Mealie and HA in parallel\n2. Compare by normalized item name\n3. Add missing items to whichever system is missing them\n4. Resolve status mismatches (Mealie = source of truth)\n\n**Environment variables used:**\n- `MEALIE_URL` — Mealie base URL\n- `MEALIE_API_TOKEN` — Mealie API Token\n- `HA_URL` — Home Assistant base URL  \n- `HOMEASSISTANT_API_TOKEN` — HA Long-Lived Access Token\n\n**Notes:**\n- Mealie is source of truth for checked/unchecked status\n- Only truly missing items are added (idempotent)\n- No action taken if both lists are already in sync",
+        "width": 480,
+        "height": 420
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000099",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [200, -180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No changes needed — lists are in sync\nreturn [{ json: { message: 'Shopping lists are in sync', timestamp: new Date().toISOString() } }];"
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000098",
+      "name": "Already In Sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 440]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Mealie Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch HA Shopping List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Mealie Items": {
+      "main": [
+        [
+          {
+            "node": "Diff & Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch HA Shopping List": {
+      "main": [
+        [
+          {
+            "node": "Diff & Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diff & Merge": {
+      "main": [
+        [
+          {
+            "node": "Has Changes?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Changes?": {
+      "main": [
+        [
+          {
+            "node": "Build Operations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already In Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Operations": {
+      "main": [
+        [
+          {
+            "node": "Route Operations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Operations": {
+      "main": [
+        [
+          {
+            "node": "HA - Add Missing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Mealie List ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HA - Complete Mismatch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HA - Incomplete Mismatch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Mealie List ID": {
+      "main": [
+        [
+          {
+            "node": "Prep Mealie Add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Mealie Add": {
+      "main": [
+        [
+          {
+            "node": "Mealie - Add Missing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "versionId": "1",
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "shopping-list"
+    },
+    {
+      "name": "reconciliation"
+    }
+  ]
+}

@@ -18,6 +18,11 @@ services:
       - GENERIC_TIMEZONE=${TZ:-America/Toronto}
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
       - N8N_USER_FOLDER=/data/.n8n
+      # Shopping list sync (Mealie ↔ Home Assistant)
+      - MEALIE_URL=${MEALIE_URL:-http://mealie:9000}
+      - MEALIE_API_TOKEN=${MEALIE_API_TOKEN:-}
+      - HA_URL=${HA_URL:-}
+      - HOMEASSISTANT_API_TOKEN=${HOMEASSISTANT_API_TOKEN:-}
     volumes:
       - ./data:/data/.n8n
     ports:

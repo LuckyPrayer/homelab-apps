@@ -1,7 +1,8 @@
 # n8n - Workflow Automation
 # A powerful workflow automation tool
 #
-# Secrets: None required (DISCORD_WEBHOOK_URL is optional)
+# Secrets: MEALIE_API_TOKEN, HOMEASSISTANT_API_TOKEN (for shopping list sync)
+#          DISCORD_WEBHOOK_URL (optional, for error notifications)
 # Data stored in ./data directory
 
 name: n8n
@@ -14,9 +15,16 @@ data_owner:
   uid: 3002
   gid: 3002
 
-# No secrets required
+# Secrets for shopping list sync workflows
+# Store in Infisical under /services/n8n
 secrets:
-  infisical_path: null
+  infisical_path: /services/n8n
+  required:
+    - MEALIE_API_TOKEN       # Mealie long-lived API token (User Profile → API Tokens)
+    - HOMEASSISTANT_API_TOKEN # HA long-lived access token (Profile → Long-Lived Access Tokens)
+  optional:
+    - DISCORD_WEBHOOK_URL    # Discord webhook for error notifications
+    - HA_URL                 # Override HA URL (default: uses inventory host_var)
 
 # Backup configuration
 backup:

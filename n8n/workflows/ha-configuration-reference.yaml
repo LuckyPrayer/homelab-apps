@@ -1,0 +1,88 @@
+# Home Assistant Configuration for Shopping List Sync
+# ════════════════════════════════════════════════════
+#
+# Add these snippets to your Home Assistant configuration
+# to enable HA → Mealie sync via n8n.
+#
+# How to add:
+#   1. Install "File Editor" or "Studio Code Server" add-on in HA
+#   2. Edit /config/configuration.yaml
+#   3. Add the rest_command section below
+#   4. Go to Developer Tools → YAML → Reload REST Commands
+#   5. Create the automation via HA UI or add to automations.yaml
+#
+# For dev:  n8n webhook = https://n8n.dev.thebozic.com/webhook/ha-shopping-sync
+# For prod: n8n webhook = https://n8n.prod.thebozic.com/webhook/ha-shopping-sync
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STEP 1: Add to configuration.yaml
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Add this under a top-level `rest_command:` key.
+# If you already have rest_command entries, merge under the existing key.
+
+rest_command:
+  sync_shopping_to_n8n:
+    url: "https://n8n.{{ env }}.thebozic.com/webhook/ha-shopping-sync"
+    method: POST
+    content_type: "application/json"
+    payload: "{{ payload }}"
+
+# Replace {{ env }} with 'dev' or 'prod' depending on your environment.
+# Example for dev:
+#   url: "https://n8n.dev.thebozic.com/webhook/ha-shopping-sync"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STEP 2: Create automation (via HA UI recommended)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Option A: Create via HA UI
+#   1. Settings → Automations & Scenes → Create Automation
+#   2. Trigger: Event → event_type: shopping_list_updated
+#   3. Action: Call Service → rest_command.sync_shopping_to_n8n
+#      Service data (YAML mode):
+#        payload: >-
+#          {{ {"action": trigger.event.data.action | default("update"),
+#              "item": {"name": trigger.event.data.item.name | default(""),
+#                       "complete": trigger.event.data.item.complete | default(false)},
+#              "source": "homeassistant"} | to_json }}
+#
+# Option B: Add to automations.yaml (via File Editor add-on)
+#   Copy the YAML below:
+
+# --- automations.yaml snippet ---
+- id: shopping_list_sync_to_n8n
+  alias: "Sync Shopping List to n8n"
+  description: "Sends shopping list changes to n8n for Mealie sync"
+  mode: queued
+  max: 10
+  trigger:
+    - platform: event
+      event_type: shopping_list_updated
+  condition:
+    # Skip events that originated from n8n (loop prevention)
+    - condition: template
+      value_template: "{{ trigger.event.data.get('source', '') != 'n8n' }}"
+  action:
+    - service: rest_command.sync_shopping_to_n8n
+      data:
+        payload: >-
+          {{ {"action": trigger.event.data.action | default("update"),
+              "item": {"name": trigger.event.data.item.name | default(""),
+                       "complete": trigger.event.data.item.complete | default(false)},
+              "source": "homeassistant"} | to_json }}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STEP 3: Verify
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# After adding the config:
+#   1. Developer Tools → YAML → Check Configuration
+#   2. Developer Tools → YAML → Reload REST Commands
+#   3. Developer Tools → YAML → Reload Automations
+#   4. Developer Tools → Services → rest_command.sync_shopping_to_n8n
+#      Test with payload:
+#        {"action": "add", "item": {"name": "test-from-ha", "complete": false}, "source": "homeassistant"}
+#   5. Check n8n execution log to verify it received the webhook

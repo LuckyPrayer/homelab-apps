@@ -1,20 +1,34 @@
 {
-  "name": "Shopping List - Mealie → Home Assistant",
+  "name": "Shopping List - Mealie \u2192 Home Assistant",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "mealie-shopping-sync",
-        "options": {
-          "rawBody": true
-        }
+        "options": {}
       },
       "id": "b1c2d3e4-0010-4000-a000-000000000001",
       "name": "Mealie Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 340],
+      "position": [
+        240,
+        340
+      ],
       "webhookId": "mealie-shopping-sync"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the Apprise JSON notification from Mealie\n// Mealie sends: { title, body, type, event_type, integration_id, document_data, event_id, timestamp }\nconst input = $input.first().json;\n\n// The document_data comes as a JSON string via Apprise custom params\nlet docData;\ntry {\n  docData = typeof input.document_data === 'string'\n    ? JSON.parse(input.document_data)\n    : input.document_data;\n} catch (e) {\n  docData = input.body ?? input;\n}\n\nconst eventType = input.event_type ?? '';\nconst operation = docData?.operation ?? 'unknown';\nconst documentType = docData?.document_type ?? 'unknown';\nconst shoppingListId = docData?.shopping_list_id ?? null;\nconst shoppingListItemId = docData?.shopping_list_item_id ?? null;\nconst shoppingListItemIds = docData?.shopping_list_item_ids ?? [];\n\nconst itemIds = shoppingListItemId\n  ? [shoppingListItemId]\n  : shoppingListItemIds;\n\nif (itemIds.length === 0 && operation !== 'delete') {\n  return [];\n}\n\nreturn itemIds.map(id => ({\n  json: {\n    eventType,\n    operation,\n    documentType,\n    shoppingListId,\n    shoppingListItemId: id,\n    integrationId: input.integration_id ?? ''\n  }\n}));"
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000020",
+      "name": "Parse Apprise Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        340
+      ]
     },
     {
       "parameters": {
@@ -26,23 +40,26 @@
           },
           "conditions": [
             {
-              "id": "loop-check",
-              "leftValue": "={{ $json.body?.extras?.synced_from }}",
-              "rightValue": "n8n",
+              "id": "is-item-event",
+              "leftValue": "={{ $json.documentType }}",
+              "rightValue": "shopping_list_item",
               "operator": {
                 "type": "string",
-                "operation": "notEquals"
+                "operation": "equals"
               }
             }
           ],
           "combinator": "and"
         }
       },
-      "id": "b1c2d3e4-0010-4000-a000-000000000002",
-      "name": "Skip If Synced By Us",
+      "id": "b1c2d3e4-0010-4000-a000-000000000021",
+      "name": "Is Item Event?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [460, 340]
+      "position": [
+        680,
+        340
+      ]
     },
     {
       "parameters": {
@@ -57,17 +74,17 @@
                 },
                 "conditions": [
                   {
-                    "leftValue": "={{ $json.body?.integration_id ?? $json.body?.event_type ?? '' }}",
-                    "rightValue": "shopping_list_item.created",
+                    "leftValue": "={{ $json.operation }}",
+                    "rightValue": "create",
                     "operator": {
                       "type": "string",
-                      "operation": "contains"
+                      "operation": "equals"
                     }
                   }
                 ],
                 "combinator": "and"
               },
-              "renameOutput": "Item Created"
+              "renameOutput": "Created"
             },
             {
               "conditions": {
@@ -78,17 +95,17 @@
                 },
                 "conditions": [
                   {
-                    "leftValue": "={{ $json.body?.integration_id ?? $json.body?.event_type ?? '' }}",
-                    "rightValue": "shopping_list_item.updated",
+                    "leftValue": "={{ $json.operation }}",
+                    "rightValue": "update",
                     "operator": {
                       "type": "string",
-                      "operation": "contains"
+                      "operation": "equals"
                     }
                   }
                 ],
                 "combinator": "and"
               },
-              "renameOutput": "Item Updated"
+              "renameOutput": "Updated"
             },
             {
               "conditions": {
@@ -99,17 +116,17 @@
                 },
                 "conditions": [
                   {
-                    "leftValue": "={{ $json.body?.integration_id ?? $json.body?.event_type ?? '' }}",
-                    "rightValue": "shopping_list_item.deleted",
+                    "leftValue": "={{ $json.operation }}",
+                    "rightValue": "delete",
                     "operator": {
                       "type": "string",
-                      "operation": "contains"
+                      "operation": "equals"
                     }
                   }
                 ],
                 "combinator": "and"
               },
-              "renameOutput": "Item Deleted"
+              "renameOutput": "Deleted"
             }
           ],
           "fallbackOutput": {
@@ -120,20 +137,97 @@
         "options": {}
       },
       "id": "b1c2d3e4-0010-4000-a000-000000000003",
-      "name": "Route by Event Type",
+      "name": "Route by Operation",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
-      "position": [700, 340]
+      "position": [
+        900,
+        340
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Extract item details from Mealie webhook payload\nconst body = $input.first().json.body ?? $input.first().json;\n\n// Mealie shopping list item fields\nconst note = body.note ?? body.item?.note ?? body.display ?? body.item?.display ?? '';\nconst foodName = body.food?.name ?? body.item?.food?.name ?? '';\nconst quantity = body.quantity ?? body.item?.quantity ?? '';\nconst unit = body.unit?.name ?? body.item?.unit?.name ?? '';\n\n// Build a readable item name\nlet itemName = '';\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? ` ${unit}` : '';\n    itemName = `${quantity}${unitStr} ${foodName}`;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = 'Unknown item';\n}\n\nreturn [{ json: { itemName: itemName.trim() } }];"
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items/{{ $json.shoppingListItemId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000030",
+      "name": "Fetch Item - Create",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        180
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MEALIE_URL }}/api/households/shopping/items/{{ $json.shoppingListItemId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000031",
+      "name": "Fetch Item - Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        340
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst extras = item.extras ?? {};\nif (extras.synced_from === \"n8n\") { return []; }\nconst note = item.note ?? \"\";\nconst foodName = item.food?.name ?? \"\";\nconst quantity = item.quantity ?? \"\";\nconst unit = item.unit?.name ?? \"\";\nlet itemName = \"\";\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? \" \" + unit : \"\";\n    itemName = quantity + unitStr + \" \" + foodName;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = \"Unknown item\";\n}\nreturn [{ json: { itemName: itemName.trim() } }];"
       },
       "id": "b1c2d3e4-0010-4000-a000-000000000004",
-      "name": "Extract Item - Add",
+      "name": "Extract Name - Add",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [960, 180]
+      "position": [
+        1380,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst extras = item.extras ?? {};\nif (extras.synced_from === \"n8n\") { return []; }\nconst note = item.note ?? \"\";\nconst foodName = item.food?.name ?? \"\";\nconst quantity = item.quantity ?? \"\";\nconst unit = item.unit?.name ?? \"\";\nconst checked = item.checked ?? false;\nlet itemName = \"\";\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? \" \" + unit : \"\";\n    itemName = quantity + unitStr + \" \" + foodName;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = \"Unknown item\";\n}\nreturn [{ json: { itemName: itemName.trim(), checked } }];"
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000006",
+      "name": "Extract Name - Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        340
+      ]
     },
     {
       "parameters": {
@@ -163,20 +257,13 @@
       "name": "HA - Add Item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1200, 180],
+      "position": [
+        1620,
+        180
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000
-    },
-    {
-      "parameters": {
-        "jsCode": "// Extract item details from Mealie webhook payload for update\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst note = body.note ?? body.item?.note ?? body.display ?? body.item?.display ?? '';\nconst foodName = body.food?.name ?? body.item?.food?.name ?? '';\nconst quantity = body.quantity ?? body.item?.quantity ?? '';\nconst unit = body.unit?.name ?? body.item?.unit?.name ?? '';\nconst checked = body.checked ?? body.item?.checked ?? false;\n\nlet itemName = '';\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? ` ${unit}` : '';\n    itemName = `${quantity}${unitStr} ${foodName}`;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = 'Unknown item';\n}\n\nreturn [{ json: { itemName: itemName.trim(), checked: checked } }];"
-      },
-      "id": "b1c2d3e4-0010-4000-a000-000000000006",
-      "name": "Extract Item - Update",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [960, 340]
     },
     {
       "parameters": {
@@ -204,7 +291,10 @@
       "name": "Is Checked?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1200, 340]
+      "position": [
+        1620,
+        340
+      ]
     },
     {
       "parameters": {
@@ -234,7 +324,10 @@
       "name": "HA - Complete Item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1440, 260],
+      "position": [
+        1860,
+        260
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000
@@ -267,20 +360,26 @@
       "name": "HA - Incomplete Item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1440, 420],
+      "position": [
+        1860,
+        420
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000
     },
     {
       "parameters": {
-        "jsCode": "// Extract item name from Mealie delete event\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst note = body.note ?? body.item?.note ?? body.display ?? body.item?.display ?? '';\nconst foodName = body.food?.name ?? body.item?.food?.name ?? '';\nconst quantity = body.quantity ?? body.item?.quantity ?? '';\nconst unit = body.unit?.name ?? body.item?.unit?.name ?? '';\n\nlet itemName = '';\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? ` ${unit}` : '';\n    itemName = `${quantity}${unitStr} ${foodName}`;\n  }\n} else if (note) {\n  itemName = note;\n} else {\n  itemName = 'Unknown item';\n}\n\nreturn [{ json: { itemName: itemName.trim() } }];"
+        "jsCode": "const input = $input.first().json;\nconst itemId = input.shoppingListItemId;\nconst staticData = $getWorkflowStaticData(\"global\");\nconst cache = staticData.itemNameCache ?? {};\nconst itemName = cache[itemId];\nif (!itemName) { return []; }\ndelete cache[itemId];\nstaticData.itemNameCache = cache;\nreturn [{ json: { itemName } }];"
       },
       "id": "b1c2d3e4-0010-4000-a000-000000000010",
-      "name": "Extract Item - Delete",
+      "name": "Lookup Deleted Item",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [960, 520]
+      "position": [
+        1140,
+        520
+      ]
     },
     {
       "parameters": {
@@ -310,22 +409,41 @@
       "name": "HA - Remove Item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1200, 520],
+      "position": [
+        1380,
+        520
+      ],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 3000
     },
     {
       "parameters": {
-        "content": "## Shopping List — Mealie → Home Assistant\n\nListens for Mealie event notifications (shopping list item changes)\nand pushes them to the Home Assistant Shopping List integration.\n\n**Webhook:** POST /webhook/mealie-shopping-sync\n\n**Mealie setup required:**\n- Household Settings → Notifications → Create\n- URL: `https://n8n.<env>.thebozic.com/webhook/mealie-shopping-sync`\n- Events: `shopping_list_item.created`, `.updated`, `.deleted`\n\n**Environment variables used:**\n- `HA_URL` — Home Assistant base URL\n- `HOMEASSISTANT_API_TOKEN` — HA Long-Lived Access Token\n\n**Loop prevention:**\n- Items with `extras.synced_from = \"n8n\"` are skipped",
-        "width": 480,
+        "jsCode": "const item = $input.first().json;\nconst itemId = item.id;\nconst note = item.note ?? \"\";\nconst foodName = item.food?.name ?? \"\";\nconst quantity = item.quantity ?? \"\";\nconst unit = item.unit?.name ?? \"\";\nlet itemName = \"\";\nif (foodName) {\n  itemName = foodName;\n  if (quantity) {\n    const unitStr = unit ? \" \" + unit : \"\";\n    itemName = quantity + unitStr + \" \" + foodName;\n  }\n} else if (note) { itemName = note; }\nif (itemId && itemName) {\n  const staticData = $getWorkflowStaticData(\"global\");\n  const cache = staticData.itemNameCache ?? {};\n  cache[itemId] = itemName.trim();\n  const keys = Object.keys(cache);\n  if (keys.length > 500) { delete cache[keys[0]]; }\n  staticData.itemNameCache = cache;\n}\nreturn $input.all();"
+      },
+      "id": "b1c2d3e4-0010-4000-a000-000000000040",
+      "name": "Cache Item Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Shopping List \u2014 Mealie \u2192 Home Assistant\n\nListens for Mealie Apprise event notifications (via json:// URL).\nMealie sends document_data with item IDs \u2014 the workflow fetches\nfull item details from the Mealie API, then syncs to HA.\n\n**Flow:**\n1. Receive Apprise JSON webhook from Mealie\n2. Parse document_data to extract operation + item ID\n3. Fetch item details from Mealie API (for create/update)\n4. Cache item names in static data (for delete lookups)\n5. Push change to HA Shopping List\n\n**Loop prevention:**\n- Items with extras.synced_from = n8n are skipped\n- Deletes use cached names; missed deletes handled by reconciliation",
+        "width": 520,
         "height": 380
       },
       "id": "b1c2d3e4-0010-4000-a000-000000000099",
       "name": "Sticky Note",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [200, -140]
+      "position": [
+        200,
+        -200
+      ]
     }
   ],
   "connections": {
@@ -333,50 +451,83 @@
       "main": [
         [
           {
-            "node": "Skip If Synced By Us",
+            "node": "Parse Apprise Event",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Skip If Synced By Us": {
+    "Parse Apprise Event": {
       "main": [
         [
           {
-            "node": "Route by Event Type",
+            "node": "Is Item Event?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route by Event Type": {
+    "Is Item Event?": {
       "main": [
         [
           {
-            "node": "Extract Item - Add",
+            "node": "Route by Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Operation": {
+      "main": [
+        [
+          {
+            "node": "Fetch Item - Create",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Extract Item - Update",
+            "node": "Fetch Item - Update",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Extract Item - Delete",
+            "node": "Lookup Deleted Item",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract Item - Add": {
+    "Fetch Item - Create": {
+      "main": [
+        [
+          {
+            "node": "Cache Item Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Item Name": {
+      "main": [
+        [
+          {
+            "node": "Extract Name - Add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Name - Add": {
       "main": [
         [
           {
@@ -387,7 +538,18 @@
         ]
       ]
     },
-    "Extract Item - Update": {
+    "Fetch Item - Update": {
+      "main": [
+        [
+          {
+            "node": "Extract Name - Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Name - Update": {
       "main": [
         [
           {
@@ -416,7 +578,7 @@
         ]
       ]
     },
-    "Extract Item - Delete": {
+    "Lookup Deleted Item": {
       "main": [
         [
           {
@@ -429,7 +591,7 @@
     }
   },
   "active": false,
-  "versionId": "1",
+  "versionId": "2",
   "settings": {
     "executionOrder": "v1",
     "errorWorkflow": ""

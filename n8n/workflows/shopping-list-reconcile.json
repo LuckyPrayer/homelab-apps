@@ -56,7 +56,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.HA_URL }}/api/services/todo/get_items",
+        "url": "={{ $env.HA_URL }}/api/services/todo/get_items?return_response",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

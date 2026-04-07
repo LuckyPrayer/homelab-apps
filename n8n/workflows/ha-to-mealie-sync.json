@@ -130,11 +130,7 @@
               },
               "renameOutput": "Remove"
             }
-          ],
-          "fallbackOutput": {
-            "type": "extra",
-            "output": -1
-          }
+          ]
         },
         "options": {}
       },

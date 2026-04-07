@@ -128,11 +128,7 @@
               },
               "renameOutput": "Deleted"
             }
-          ],
-          "fallbackOutput": {
-            "type": "extra",
-            "output": -1
-          }
+          ]
         },
         "options": {}
       },

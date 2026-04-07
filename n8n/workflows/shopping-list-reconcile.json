@@ -254,11 +254,7 @@
               },
               "renameOutput": "Incomplete in HA"
             }
-          ],
-          "fallbackOutput": {
-            "type": "extra",
-            "output": -1
-          }
+          ]
         },
         "options": {}
       },

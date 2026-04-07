@@ -27,7 +27,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+              "value": "=Bearer {{ $env.MEALIE_API_TOKEN }}"
             }
           ]
         },
@@ -62,7 +62,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+              "value": "=Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
             },
             {
               "name": "Content-Type",
@@ -273,7 +273,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+              "value": "=Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
             },
             {
               "name": "Content-Type",
@@ -306,7 +306,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+              "value": "=Bearer {{ $env.MEALIE_API_TOKEN }}"
             }
           ]
         },
@@ -339,7 +339,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.MEALIE_API_TOKEN }}"
+              "value": "=Bearer {{ $env.MEALIE_API_TOKEN }}"
             },
             {
               "name": "Content-Type",
@@ -372,7 +372,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+              "value": "=Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
             },
             {
               "name": "Content-Type",
@@ -405,7 +405,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+              "value": "=Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
             },
             {
               "name": "Content-Type",

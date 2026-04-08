@@ -81,20 +81,20 @@
       "name": "Fetch HA Shopping List",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 440],
+      "position": [620, 340],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 5000
     },
     {
       "parameters": {
-        "jsCode": "// Merge results from both API calls and compute the diff\nconst mealieResponse = $('Fetch Mealie Items').first().json;\nconst haResponse = $('Fetch HA Shopping List').first().json;\n\n// Parse Mealie items\nconst mealieRawItems = mealieResponse.items ?? mealieResponse.data ?? [];\nconst mealieItems = mealieRawItems.map(item => {\n  const note = (item.note ?? '').trim();\n  const foodName = (item.food?.name ?? '').trim();\n  const display = (item.display ?? '').trim();\n  const name = foodName || note || display || 'Unknown';\n  return {\n    id: item.id,\n    name: name,\n    nameNorm: name.toLowerCase(),\n    checked: item.checked ?? false,\n    source: 'mealie'\n  };\n});\n\n// Parse HA items\n// HA returns: { \"todo.shopping_list\": { \"items\": [...] } }\nlet haItems = [];\nconst haData = haResponse['todo.shopping_list'] ?? haResponse;\nconst haRawItems = haData?.items ?? haData ?? [];\nif (Array.isArray(haRawItems)) {\n  haItems = haRawItems.map(item => ({\n    uid: item.uid ?? '',\n    name: (item.summary ?? item.name ?? '').trim(),\n    nameNorm: (item.summary ?? item.name ?? '').trim().toLowerCase(),\n    completed: (item.status === 'completed'),\n    source: 'ha'\n  }));\n}\n\n// Build lookup sets\nconst mealieNames = new Set(mealieItems.map(i => i.nameNorm));\nconst haNames = new Set(haItems.map(i => i.nameNorm));\n\n// Items in Mealie but not in HA → need to add to HA\nconst addToHA = mealieItems\n  .filter(i => !haNames.has(i.nameNorm) && i.nameNorm !== 'unknown')\n  .map(i => ({ name: i.name, checked: i.checked }));\n\n// Items in HA but not in Mealie → need to add to Mealie\nconst addToMealie = haItems\n  .filter(i => !mealieNames.has(i.nameNorm))\n  .map(i => ({ name: i.name, completed: i.completed }));\n\n// Status mismatches (item exists in both but status differs)\nconst statusMismatches = [];\nfor (const mi of mealieItems) {\n  const haMatch = haItems.find(hi => hi.nameNorm === mi.nameNorm);\n  if (haMatch) {\n    const mealieChecked = mi.checked;\n    const haCompleted = haMatch.completed;\n    if (mealieChecked !== haCompleted) {\n      // Mealie is source of truth for status\n      statusMismatches.push({\n        name: mi.name,\n        mealieChecked: mealieChecked,\n        haCompleted: haCompleted,\n        mealieId: mi.id,\n        haUid: haMatch.uid\n      });\n    }\n  }\n}\n\nreturn [{\n  json: {\n    addToHA,\n    addToMealie,\n    statusMismatches,\n    stats: {\n      mealieCount: mealieItems.length,\n      haCount: haItems.length,\n      toAddToHA: addToHA.length,\n      toAddToMealie: addToMealie.length,\n      mismatches: statusMismatches.length\n    }\n  }\n}];"
+        "jsCode": "// Merge results from both API calls and compute the diff\nconst mealieResponse = $('Fetch Mealie Items').first().json;\nconst haResponse = $('Fetch HA Shopping List').first().json;\n\n// Parse Mealie items\nconst mealieRawItems = mealieResponse.items ?? mealieResponse.data ?? [];\nconst mealieItems = mealieRawItems.map(item => {\n  const note = (item.note ?? '').trim();\n  const foodName = (item.food?.name ?? '').trim();\n  const display = (item.display ?? '').trim();\n  const name = foodName || note || display || 'Unknown';\n  return {\n    id: item.id,\n    name: name,\n    nameNorm: name.toLowerCase(),\n    checked: item.checked ?? false,\n    source: 'mealie'\n  };\n});\n\n// Parse HA items\n// HA may return: { service_response: { \"todo.shopping_list\": { items: [...] } } }\n// or legacy: { \"todo.shopping_list\": { items: [...] } }\nlet haItems = [];\nconst svcResp = haResponse.service_response ?? haResponse;\nconst haData = svcResp['todo.shopping_list'] ?? svcResp;\nconst haRawItems = haData?.items ?? haData ?? [];\nif (Array.isArray(haRawItems)) {\n  haItems = haRawItems.map(item => ({\n    uid: item.uid ?? '',\n    name: (item.summary ?? item.name ?? '').trim(),\n    nameNorm: (item.summary ?? item.name ?? '').trim().toLowerCase(),\n    completed: (item.status === 'completed'),\n    source: 'ha'\n  }));\n}\n\n// Build lookup sets\nconst mealieNames = new Set(mealieItems.map(i => i.nameNorm));\nconst haNames = new Set(haItems.map(i => i.nameNorm));\n\n// Items in Mealie but not in HA → need to add to HA\nconst addToHA = mealieItems\n  .filter(i => !haNames.has(i.nameNorm) && i.nameNorm !== 'unknown')\n  .map(i => ({ name: i.name, checked: i.checked }));\n\n// Items in HA but not in Mealie → need to add to Mealie\nconst addToMealie = haItems\n  .filter(i => !mealieNames.has(i.nameNorm))\n  .map(i => ({ name: i.name, completed: i.completed }));\n\n// Status mismatches (item exists in both but status differs)\nconst statusMismatches = [];\nfor (const mi of mealieItems) {\n  const haMatch = haItems.find(hi => hi.nameNorm === mi.nameNorm);\n  if (haMatch) {\n    const mealieChecked = mi.checked;\n    const haCompleted = haMatch.completed;\n    if (mealieChecked !== haCompleted) {\n      // Mealie is source of truth for status\n      statusMismatches.push({\n        name: mi.name,\n        mealieChecked: mealieChecked,\n        haCompleted: haCompleted,\n        mealieId: mi.id,\n        haUid: haMatch.uid\n      });\n    }\n  }\n}\n\nreturn [{\n  json: {\n    addToHA,\n    addToMealie,\n    statusMismatches,\n    stats: {\n      mealieCount: mealieItems.length,\n      haCount: haItems.length,\n      toAddToHA: addToHA.length,\n      toAddToMealie: addToMealie.length,\n      mismatches: statusMismatches.length\n    }\n  }\n}];"
       },
       "id": "d1e2f3a4-0030-4000-a000-000000000004",
       "name": "Diff & Merge",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [740, 340]
+      "position": [840, 340]
     },
     {
       "parameters": {
@@ -349,7 +349,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  shopping_list_id: $json.listId,\n  note: $json.name,\n  checked: $json.completed,\n  extras: { synced_from: 'homeassistant' }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  shopping_list_id: $json.listId,\n  note: $json.name,\n  checked: $json.completed,\n  extras: { synced_from: 'n8n' }\n}) }}",
         "options": {
           "timeout": 10000
         }
@@ -460,11 +460,6 @@
             "node": "Fetch Mealie Items",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Fetch HA Shopping List",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -473,7 +468,7 @@
       "main": [
         [
           {
-            "node": "Diff & Merge",
+            "node": "Fetch HA Shopping List",
             "type": "main",
             "index": 0
           }

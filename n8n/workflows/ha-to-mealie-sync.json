@@ -36,7 +36,7 @@
             },
             {
               "id": "name-check",
-              "leftValue": "={{ $json.body?.item_name ?? '' }}",
+              "leftValue": "={{ $json.body?.item?.name ?? $json.body?.item_name ?? '' }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -55,7 +55,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract and normalize the HA event payload\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst action = (body.action ?? '').toLowerCase();\nconst itemName = (body.item_name ?? '').trim();\nconst itemComplete = body.item_complete === true || body.item_complete === 'true' || body.item_complete === 'True';\n\nreturn [{ json: { action, itemName, itemComplete } }];"
+        "jsCode": "// Extract and normalize the HA event payload\n// Supports both nested format (from HA automation):\n//   { action, item: { name, complete }, source }\n// and flat format (direct curl):\n//   { action, item_name, item_complete, source }\nconst body = $input.first().json.body ?? $input.first().json;\n\nconst action = (body.action ?? '').toLowerCase();\nconst itemName = (body.item?.name ?? body.item_name ?? '').trim();\nconst itemComplete = (() => {\n  const v = body.item?.complete ?? body.item_complete;\n  return v === true || v === 'true' || v === 'True';\n})();\n\nreturn [{ json: { action, itemName, itemComplete } }];"
       },
       "id": "c1d2e3f4-0020-4000-a000-000000000003",
       "name": "Parse HA Payload",
@@ -407,9 +407,9 @@
     },
     {
       "parameters": {
-        "content": "## Shopping List — Home Assistant → Mealie\n\nListens for HA shopping list events (via HA automation + REST command)\nand pushes changes to Mealie's shopping list.\n\n**Webhook:** POST /webhook/ha-shopping-sync\n\n**HA setup required:**\n1. Add `rest_command` to `configuration.yaml`\n2. Add automation triggered by `shopping_list_updated` event\n   (see plan doc for YAML examples)\n\n**Expected payload:**\n```json\n{\n  \"action\": \"add|update|remove\",\n  \"item_name\": \"Milk\",\n  \"item_complete\": false,\n  \"source\": \"homeassistant\"\n}\n```\n\n**Environment variables used:**\n- `MEALIE_URL` — Mealie base URL\n- `MEALIE_API_TOKEN` — Mealie Long-Lived API Token\n\n**Loop prevention:**\n- Payloads with `source: \"n8n\"` are skipped\n- Created items get `extras.synced_from = \"homeassistant\"`",
+        "content": "## Shopping List — Home Assistant → Mealie\n\nListens for HA shopping list events (via HA automation + REST command)\nand pushes changes to Mealie's shopping list.\n\n**Webhook:** POST /webhook/ha-shopping-sync\n\n**HA setup required:**\n1. Add `rest_command` to `configuration.yaml`\n2. Add automation triggered by `shopping_list_updated` event\n   (see `ha-configuration-reference.yaml` for setup)\n\n**Expected payload (HA automation — nested):**\n```json\n{\n  \"action\": \"add|update|remove\",\n  \"item\": { \"name\": \"Milk\", \"complete\": false },\n  \"source\": \"homeassistant\"\n}\n```\n\n**Also accepted (flat — for direct curl testing):**\n```json\n{\n  \"action\": \"add|update|remove\",\n  \"item_name\": \"Milk\",\n  \"item_complete\": false,\n  \"source\": \"homeassistant\"\n}\n```\n\n**Environment variables used:**\n- `MEALIE_URL` — Mealie base URL\n- `MEALIE_API_TOKEN` — Mealie Long-Lived API Token\n\n**Loop prevention:**\n- Payloads with `source: \"n8n\"` are skipped\n- Created items get `extras.synced_from = \"homeassistant\"`",
         "width": 480,
-        "height": 520
+        "height": 620
       },
       "id": "c1d2e3f4-0020-4000-a000-000000000099",
       "name": "Sticky Note",

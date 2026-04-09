@@ -240,7 +240,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Find the Mealie item matching the HA item name\nconst response = $input.first().json;\nconst items = response.items ?? response.data ?? response;\nconst prevData = $('Parse HA Payload').first().json;\nconst targetName = prevData.itemName.toLowerCase().trim();\nconst isComplete = prevData.itemComplete;\n\nlet matchedItem = null;\n\nif (Array.isArray(items)) {\n  matchedItem = items.find(item => {\n    const note = (item.note ?? '').toLowerCase().trim();\n    const foodName = (item.food?.name ?? '').toLowerCase().trim();\n    const display = (item.display ?? '').toLowerCase().trim();\n    return note === targetName || foodName === targetName || display === targetName;\n  });\n}\n\nif (matchedItem) {\n  return [{ json: { itemId: matchedItem.id, checked: isComplete, found: true } }];\n} else {\n  return [{ json: { found: false, itemName: prevData.itemName } }];\n}"
+        "jsCode": "// Find the Mealie item matching the HA item name\nconst response = $input.first().json;\nconst items = response.items ?? response.data ?? response;\nconst prevData = $('Parse HA Payload').first().json;\nconst targetName = prevData.itemName.toLowerCase().trim();\nconst isComplete = prevData.itemComplete;\n\nlet matchedItem = null;\n\nif (Array.isArray(items)) {\n  matchedItem = items.find(item => {\n    const note = (item.note ?? '').toLowerCase().trim();\n    const foodName = (item.food?.name ?? '').toLowerCase().trim();\n    const display = (item.display ?? '').toLowerCase().trim();\n    return note === targetName || foodName === targetName || display === targetName;\n  });\n}\n\nif (matchedItem) {\n  return [{ json: {\n    itemId: matchedItem.id,\n    shoppingListId: matchedItem.shoppingListId,\n    note: matchedItem.note ?? '',\n    quantity: matchedItem.quantity ?? 0,\n    foodId: matchedItem.foodId ?? null,\n    unitId: matchedItem.unitId ?? null,\n    labelId: matchedItem.labelId ?? null,\n    checked: isComplete,\n    found: true\n  } }];\n} else {\n  return [{ json: { found: false, itemName: prevData.itemName } }];\n}"
       },
       "id": "c1d2e3f4-0020-4000-a000-000000000009",
       "name": "Find Mealie Item - Update",
@@ -295,7 +295,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  checked: $json.checked,\n  extras: { synced_from: 'homeassistant' }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  shoppingListId: $json.shoppingListId,\n  note: $json.note,\n  quantity: $json.quantity,\n  foodId: $json.foodId || undefined,\n  unitId: $json.unitId || undefined,\n  labelId: $json.labelId || undefined,\n  checked: $json.checked,\n  extras: { synced_from: 'homeassistant' }\n}) }}",
         "options": {
           "timeout": 10000
         }

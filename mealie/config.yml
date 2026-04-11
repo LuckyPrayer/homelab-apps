@@ -19,9 +19,14 @@ data_owner:
 
 # Secrets configuration
 secrets:
-  infisical_path: null        # No secrets required
-  required: []
-  optional: []
+  infisical_path: /services/mealie
+  per_app_token: true
+  generate_env_file: true
+  required:
+    - OPENAI_API_KEY             # OpenAI API key for recipe features
+  optional:
+    - OPENAI_BASE_URL            # Custom OpenAI-compatible endpoint (e.g. Ollama)
+    - OPENAI_MODEL               # Model override (default: gpt-4o)
 
 # Backup configuration  
 backup:

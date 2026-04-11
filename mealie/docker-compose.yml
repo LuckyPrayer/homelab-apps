@@ -2,7 +2,8 @@
 # A self-hosted recipe manager and meal planner
 # 
 # Deployed via Komodo Git integration
-# Secrets: None required
+# Secrets: OPENAI_API_KEY (required)
+# Infisical path: /services/mealie/
 # Docs: https://docs.mealie.io/
 
 services:
@@ -16,6 +17,11 @@ services:
       - PGID=3002
       - TZ=${TZ:-America/Toronto}
       - DB_ENGINE=sqlite
+      # OpenAI integration (from Infisical: /services/mealie/)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - OPENAI_ENABLE_IMAGE_SERVICES=True
+      - OPENAI_SEND_DATABASE_DATA=True
     volumes:
       - ./data:/app/data
     ports:

@@ -2,7 +2,7 @@
 # A self-hosted recipe manager and meal planner
 # 
 # Deployed via Komodo Git integration
-# Secrets: OPENAI_API_KEY (required)
+# Secrets: OPENAI_API_KEY, SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM (required)
 # Infisical path: /services/mealie/
 # Docs: https://docs.mealie.io/
 
@@ -23,6 +23,14 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - OPENAI_ENABLE_IMAGE_SERVICES=True
       - OPENAI_SEND_DATABASE_DATA=True
+      # SMTP email configuration (from Infisical: /services/mealie/)
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM}
+      - SMTP_FROM_NAME=Mealie
+      - SMTP_AUTH_STRATEGY=TLS
     volumes:
       - ./data:/app/data
     ports:

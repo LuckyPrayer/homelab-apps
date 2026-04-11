@@ -24,6 +24,11 @@ secrets:
   generate_env_file: true
   required:
     - OPENAI_API_KEY             # OpenAI API key for recipe features
+    - SMTP_HOST                  # SMTP server hostname
+    - SMTP_PORT                  # SMTP server port
+    - SMTP_USERNAME              # SMTP auth username (mapped to SMTP_USER)
+    - SMTP_PASSWORD              # SMTP auth password
+    - SMTP_FROM                  # Sender email (mapped to SMTP_FROM_EMAIL)
   optional:
     - OPENAI_BASE_URL            # Custom OpenAI-compatible endpoint (e.g. Ollama)
     - OPENAI_MODEL               # Model override (default: gpt-4o)

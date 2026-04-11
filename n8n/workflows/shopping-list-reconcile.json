@@ -126,7 +126,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Split into individual operations for batch processing\nconst data = $input.first().json;\nconst operations = [];\n\n// Items to add to HA\nfor (const item of data.addToHA) {\n  operations.push({\n    target: 'ha',\n    action: 'add',\n    name: item.name,\n    checked: item.checked\n  });\n}\n\n// Items to add to Mealie\nfor (const item of data.addToMealie) {\n  operations.push({\n    target: 'mealie',\n    action: 'add',\n    name: item.name,\n    completed: item.completed\n  });\n}\n\n// Status mismatches — update HA to match Mealie (source of truth)\nfor (const item of data.statusMismatches) {\n  operations.push({\n    target: 'ha',\n    action: item.mealieChecked ? 'complete' : 'incomplete',\n    name: item.name\n  });\n}\n\nif (operations.length === 0) {\n  return [{ json: { message: 'No operations needed' } }];\n}\n\nreturn operations.map(op => ({ json: op }));"
+        "jsCode": "// Split into individual operations for batch processing\n// Reference Diff & Merge directly (Pause HA Sync is our immediate input)\nconst data = $('Diff & Merge').first().json;\nconst operations = [];\n\n// Items to add to HA\nfor (const item of (data.addToHA || [])) {\n  operations.push({\n    target: 'ha',\n    action: 'add',\n    name: item.name,\n    checked: item.checked\n  });\n}\n\n// Items to add to Mealie\nfor (const item of (data.addToMealie || [])) {\n  operations.push({\n    target: 'mealie',\n    action: 'add',\n    name: item.name,\n    completed: item.completed\n  });\n}\n\n// Status mismatches — update HA to match Mealie (source of truth)\nfor (const item of (data.statusMismatches || [])) {\n  operations.push({\n    target: 'ha',\n    action: item.mealieChecked ? 'complete' : 'incomplete',\n    name: item.name\n  });\n}\n\nif (operations.length === 0) {\n  return [{ json: { message: 'No operations needed' } }];\n}\n\nreturn operations.map(op => ({ json: op }));"
       },
       "id": "d1e2f3a4-0030-4000-a000-000000000006",
       "name": "Build Operations",
@@ -431,7 +431,7 @@
     },
     {
       "parameters": {
-        "content": "## Shopping List — Periodic Reconciliation\n\nRuns every 15 minutes to catch missed events and keep\nMealie and Home Assistant shopping lists in sync.\n\n**Flow:**\n1. Fetch ALL items from Mealie and HA in parallel\n2. Compare by normalized item name\n3. Add missing items to whichever system is missing them\n4. Resolve status mismatches (Mealie = source of truth)\n\n**Environment variables used:**\n- `MEALIE_URL` — Mealie base URL\n- `MEALIE_API_TOKEN` — Mealie API Token\n- `HA_URL` — Home Assistant base URL  \n- `HOMEASSISTANT_API_TOKEN` — HA Long-Lived Access Token\n\n**Notes:**\n- Mealie is source of truth for checked/unchecked status\n- Only truly missing items are added (idempotent)\n- No action taken if both lists are already in sync",
+        "content": "## Shopping List — Periodic Reconciliation\n\nRuns every 15 minutes to catch missed events and keep\nMealie and Home Assistant shopping lists in sync.\n\n**Flow:**\n1. Fetch ALL items from Mealie and HA in parallel\n2. Compare by normalized item name\n3. **Pause HA sync automation** (set input_boolean.n8n_sync_in_progress)\n4. Add missing items to whichever system is missing them\n5. Resolve status mismatches (Mealie = source of truth)\n6. **Resume HA sync automation** after 30s safety timer\n\n**Environment variables used:**\n- `MEALIE_URL` — Mealie base URL\n- `MEALIE_API_TOKEN` — Mealie API Token\n- `HA_URL` — Home Assistant base URL  \n- `HOMEASSISTANT_API_TOKEN` — HA Long-Lived Access Token\n\n**Sync Lock:**\n- Turns ON `input_boolean.n8n_sync_in_progress` before writing to HA\n- HA automation checks this flag and skips during reconciliation\n- 30s parallel timer turns the flag back OFF\n- HA also has a 60s safety automation to clear a stuck flag\n\n**Notes:**\n- Mealie is source of truth for checked/unchecked status\n- Only truly missing items are added (idempotent)\n- No action taken if both lists are already in sync",
         "width": 480,
         "height": 420
       },
@@ -440,6 +440,78 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [200, -180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/input_boolean/turn_on",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"entity_id\": \"input_boolean.n8n_sync_in_progress\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000014",
+      "name": "Pause HA Sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 160]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000015",
+      "name": "Wait for Sync",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1360, 160],
+      "webhookId": "wait-for-sync"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HA_URL }}/api/services/input_boolean/turn_off",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.HOMEASSISTANT_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"entity_id\": \"input_boolean.n8n_sync_in_progress\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d1e2f3a4-0030-4000-a000-000000000016",
+      "name": "Resume HA Sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 160]
     },
     {
       "parameters": {
@@ -501,7 +573,7 @@
       "main": [
         [
           {
-            "node": "Build Operations",
+            "node": "Pause HA Sync",
             "type": "main",
             "index": 0
           }
@@ -509,6 +581,33 @@
         [
           {
             "node": "Already In Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause HA Sync": {
+      "main": [
+        [
+          {
+            "node": "Build Operations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait for Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Sync": {
+      "main": [
+        [
+          {
+            "node": "Resume HA Sync",
             "type": "main",
             "index": 0
           }

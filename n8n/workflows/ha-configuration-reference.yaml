@@ -7,12 +7,12 @@
 # How to add:
 #   1. Install "File Editor" or "Studio Code Server" add-on in HA
 #   2. Edit /config/configuration.yaml
-#   3. Add the rest_command section below
+#   3. Add the rest_command and input_boolean sections below
 #   4. Go to Developer Tools → YAML → Reload REST Commands
-#   5. Create the automation via HA UI or add to automations.yaml
+#   5. Create the automations via HA UI or add to automations.yaml
 #
 # For dev:  n8n webhook = https://n8n.dev.thebozic.com/webhook/ha-shopping-sync
-# For prod: n8n webhook = https://n8n.prod.thebozic.com/webhook/ha-shopping-sync
+# For prod: n8n webhook = http://192.168.10.100:5678/webhook/ha-shopping-sync (internal)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # STEP 1: Add to configuration.yaml
@@ -29,18 +29,27 @@ rest_command:
     payload: "{{ payload }}"
 
 # Replace {{ env }} with 'dev' or 'prod' depending on your environment.
-# Example for dev:
-#   url: "https://n8n.dev.thebozic.com/webhook/ha-shopping-sync"
+# For prod, use the internal URL to avoid TLS cert issues:
+#   url: "http://192.168.10.100:5678/webhook/ha-shopping-sync"
+
+# Sync lock — the n8n reconciliation workflow toggles this to suppress
+# the automation while it batch-writes to HA's shopping list.
+
+input_boolean:
+  n8n_sync_in_progress:
+    name: n8n Sync In Progress
+    initial: off
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STEP 2: Create automation (via HA UI recommended)
+# STEP 2: Create automations (via HA UI recommended)
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Option A: Create via HA UI
 #   1. Settings → Automations & Scenes → Create Automation
 #   2. Trigger: Event → event_type: shopping_list_updated
-#   3. Action: Call Service → rest_command.sync_shopping_to_n8n
+#   3. Condition: State → input_boolean.n8n_sync_in_progress is off
+#   4. Action: Call Service → rest_command.sync_shopping_to_n8n
 #      Service data (YAML mode):
 #        payload: >-
 #          {{ {"action": trigger.event.data.action | default("update"),
@@ -52,6 +61,8 @@ rest_command:
 #   Copy the YAML below:
 
 # --- automations.yaml snippet ---
+
+# Automation 1: Real-time HA → n8n sync
 - id: shopping_list_sync_to_n8n
   alias: "Sync Shopping List to n8n"
   description: "Sends shopping list changes to n8n for Mealie sync"
@@ -61,9 +72,10 @@ rest_command:
     - platform: event
       event_type: shopping_list_updated
   condition:
-    # Skip events that originated from n8n (loop prevention)
-    - condition: template
-      value_template: "{{ trigger.event.data.get('source', '') != 'n8n' }}"
+    # Skip events during n8n reconciliation (loop prevention)
+    - condition: state
+      entity_id: input_boolean.n8n_sync_in_progress
+      state: "off"
   action:
     - service: rest_command.sync_shopping_to_n8n
       data:
@@ -72,6 +84,22 @@ rest_command:
               "item": {"name": trigger.event.data.item.name | default(""),
                        "complete": trigger.event.data.item.complete | default(false)},
               "source": "homeassistant"} | to_json }}
+
+# Automation 2: Safety reset — clears a stuck sync flag after 60s
+- id: reset_n8n_sync_flag
+  alias: "Reset n8n Sync Flag"
+  description: "Turns off n8n_sync_in_progress after 60s in case the workflow fails to clear it"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: input_boolean.n8n_sync_in_progress
+      to: "on"
+      for:
+        seconds: 60
+  action:
+    - service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.n8n_sync_in_progress
 
 
 # ──────────────────────────────────────────────────────────────────────────────

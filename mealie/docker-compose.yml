@@ -8,7 +8,7 @@
 
 services:
   mealie:
-    image: ghcr.io/mealie-recipes/mealie:v3.11.0
+    image: ghcr.io/mealie-recipes/mealie:v3.14.0
     container_name: mealie
     user: "3002:3002"  # Run as docker-svc user
     environment:
@@ -16,6 +16,7 @@ services:
       - PUID=3002
       - PGID=3002
       - TZ=${TZ:-America/Toronto}
+      - BASE_URL=https://mealie.${ENV:-dev}.${BASE_DOMAIN:-thebozic.com}
       - DB_ENGINE=sqlite
       # OpenAI integration (from Infisical: /services/mealie/)
       - OPENAI_API_KEY=${OPENAI_API_KEY}
